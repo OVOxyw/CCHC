@@ -1,0 +1,9 @@
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+
+dependencies:
+  - sra-tools >=3.0.3
+  - pigz =2.6
+  - snakemake-wrapper-utils =0.5.3

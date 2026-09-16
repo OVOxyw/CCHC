@@ -1,0 +1,7 @@
+samples:
+  file: "config/samples.tsv"
+
+paths:
+  raw: "data/raw_data"
+  trimmed: "data/trimmed"
+  fastp_report: "output/fastp"

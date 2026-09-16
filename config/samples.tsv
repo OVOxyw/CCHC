@@ -1,0 +1,117 @@
+run	sample	individual	disease_state	timepoint
+SRR15881871	GSM5576716	case subject 1	T2D case	baseline
+SRR15881872	GSM5576717	case subject 2	T2D case	baseline
+SRR15881873	GSM5576718	case subject 3	T2D case	baseline
+SRR15881874	GSM5576719	case subject 4	T2D case	baseline
+SRR15881875	GSM5576720	case subject 5	T2D case	baseline
+SRR15881876	GSM5576721	case subject 6	T2D case	baseline
+SRR15881877	GSM5576722	case subject 7	T2D case	baseline
+SRR15881878	GSM5576723	case subject 8	T2D case	baseline
+SRR15881879	GSM5576724	case subject 9	T2D case	baseline
+SRR15881880	GSM5576725	case subject 10	T2D case	baseline
+SRR15881881	GSM5576726	case subject 11	T2D case	baseline
+SRR15881882	GSM5576727	case subject 12	T2D case	baseline
+SRR15881883	GSM5576728	case subject 13	T2D case	baseline
+SRR15881884	GSM5576729	case subject 14	T2D case	baseline
+SRR15881885	GSM5576730	case subject 15	T2D case	baseline
+SRR15881886	GSM5576731	case subject 16	T2D case	baseline
+SRR15881887	GSM5576732	case subject 17	T2D case	baseline
+SRR15881888	GSM5576733	case subject 18	T2D case	baseline
+SRR15881889	GSM5576734	case subject 19	T2D case	baseline
+SRR15881890	GSM5576735	case subject 20	T2D case	baseline
+SRR15881891	GSM5576736	case subject 21	T2D case	baseline
+SRR15881892	GSM5576737	case subject 22	T2D case	baseline
+SRR15881893	GSM5576738	case subject 23	T2D case	baseline
+SRR15881894	GSM5576739	case subject 24	T2D case	baseline
+SRR15881895	GSM5576740	case subject 25	T2D case	baseline
+SRR15881896	GSM5576741	case subject 1	T2D case	follow-up
+SRR15881897	GSM5576742	case subject 2	T2D case	follow-up
+SRR15881898	GSM5576743	case subject 3	T2D case	follow-up
+SRR15881899	GSM5576744	case subject 4	T2D case	follow-up
+SRR15881900	GSM5576745	case subject 5	T2D case	follow-up
+SRR15881901	GSM5576746	case subject 6	T2D case	follow-up
+SRR15881902	GSM5576747	case subject 7	T2D case	follow-up
+SRR15881903	GSM5576748	case subject 8	T2D case	follow-up
+SRR15881904	GSM5576749	case subject 9	T2D case	follow-up
+SRR15881905	GSM5576750	case subject 10	T2D case	follow-up
+SRR15881906	GSM5576751	case subject 11	T2D case	follow-up
+SRR15881907	GSM5576752	case subject 12	T2D case	follow-up
+SRR15881908	GSM5576753	case subject 13	T2D case	follow-up
+SRR15881909	GSM5576754	case subject 14	T2D case	follow-up
+SRR15881910	GSM5576755	case subject 15	T2D case	follow-up
+SRR15881911	GSM5576756	case subject 16	T2D case	follow-up
+SRR15881912	GSM5576757	case subject 17	T2D case	follow-up
+SRR15881913	GSM5576758	case subject 18	T2D case	follow-up
+SRR15881914	GSM5576759	case subject 19	T2D case	follow-up
+SRR15881915	GSM5576760	case subject 20	T2D case	follow-up
+SRR15881916	GSM5576761	case subject 21	T2D case	follow-up
+SRR15881917	GSM5576762	case subject 22	T2D case	follow-up
+SRR15881918	GSM5576763	case subject 23	T2D case	follow-up
+SRR15881919	GSM5576764	case subject 24	T2D case	follow-up
+SRR15881920	GSM5576765	case subject 25	T2D case	follow-up
+SRR15881921	GSM5576766	control subject 2	control	baseline
+SRR15881922	GSM5576767	control subject 31	control	baseline
+SRR15881923	GSM5576768	control subject 1	control	baseline
+SRR15881924	GSM5576769	control subject 3	control	baseline
+SRR15881925	GSM5576770	control subject 4	control	baseline
+SRR15881926	GSM5576771	control subject 5	control	baseline
+SRR15881927	GSM5576772	control subject 6	control	baseline
+SRR15881928	GSM5576773	control subject 7	control	baseline
+SRR15881929	GSM5576774	control subject 8	control	baseline
+SRR15881930	GSM5576775	control subject 9	control	baseline
+SRR15881931	GSM5576776	control subject 10	control	baseline
+SRR15881932	GSM5576777	control subject 11	control	baseline
+SRR15881933	GSM5576778	control subject 12	control	baseline
+SRR15881934	GSM5576779	control subject 13	control	baseline
+SRR15881935	GSM5576780	control subject 14	control	baseline
+SRR15881936	GSM5576781	control subject 15	control	baseline
+SRR15881937	GSM5576782	control subject 16	control	baseline
+SRR15881938	GSM5576783	control subject 17	control	baseline
+SRR15881939	GSM5576784	control subject 18	control	baseline
+SRR15881940	GSM5576785	control subject 19	control	baseline
+SRR15881941	GSM5576786	control subject 20	control	baseline
+SRR15881942	GSM5576787	control subject 21	control	baseline
+SRR15881943	GSM5576788	control subject 22	control	baseline
+SRR15881944	GSM5576789	control subject 23	control	baseline
+SRR15881945	GSM5576790	control subject 24	control	baseline
+SRR15881946	GSM5576791	control subject 25	control	baseline
+SRR15881947	GSM5576792	control subject 26	control	baseline
+SRR15881948	GSM5576793	control subject 27	control	baseline
+SRR15881949	GSM5576794	control subject 28	control	baseline
+SRR15881950	GSM5576795	control subject 29	control	baseline
+SRR15881951	GSM5576796	control subject 30	control	baseline
+SRR15881952	GSM5576797	control subject 32	control	baseline
+SRR15881953	GSM5576798	control subject 33	control	baseline
+SRR15881954	GSM5576799	control subject 2	control	follow-up
+SRR15881955	GSM5576800	control subject 31	control	follow-up
+SRR15881956	GSM5576801	control subject 1	control	follow-up
+SRR15881957	GSM5576802	control subject 3	control	follow-up
+SRR15881958	GSM5576803	control subject 4	control	follow-up
+SRR15881959	GSM5576804	control subject 5	control	follow-up
+SRR15881960	GSM5576805	control subject 6	control	follow-up
+SRR15881961	GSM5576806	control subject 7	control	follow-up
+SRR15881962	GSM5576807	control subject 8	control	follow-up
+SRR15881963	GSM5576808	control subject 9	control	follow-up
+SRR15881964	GSM5576809	control subject 10	control	follow-up
+SRR15881965	GSM5576810	control subject 11	control	follow-up
+SRR15881966	GSM5576811	control subject 12	control	follow-up
+SRR15881967	GSM5576812	control subject 13	control	follow-up
+SRR15881968	GSM5576813	control subject 14	control	follow-up
+SRR15881969	GSM5576814	control subject 15	control	follow-up
+SRR15881970	GSM5576815	control subject 16	control	follow-up
+SRR15881971	GSM5576816	control subject 17	control	follow-up
+SRR15881972	GSM5576817	control subject 18	control	follow-up
+SRR15881973	GSM5576818	control subject 19	control	follow-up
+SRR15881974	GSM5576819	control subject 20	control	follow-up
+SRR15881975	GSM5576820	control subject 21	control	follow-up
+SRR15881976	GSM5576821	control subject 22	control	follow-up
+SRR15881977	GSM5576822	control subject 23	control	follow-up
+SRR15881978	GSM5576823	control subject 24	control	follow-up
+SRR15881979	GSM5576824	control subject 25	control	follow-up
+SRR15881980	GSM5576825	control subject 26	control	follow-up
+SRR15881981	GSM5576826	control subject 27	control	follow-up
+SRR15881982	GSM5576827	control subject 28	control	follow-up
+SRR15881983	GSM5576828	control subject 29	control	follow-up
+SRR15881984	GSM5576829	control subject 30	control	follow-up
+SRR15881985	GSM5576830	control subject 32	control	follow-up
+SRR15881986	GSM5576831	control subject 33	control	follow-up

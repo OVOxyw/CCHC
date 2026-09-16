@@ -1,0 +1,15 @@
+# Snakemake
+.snakemake/
+
+# Data
+data
+
+# Logs
+workflow/logs/
+
+# Generated fastp reports
+output/fastp/
+
+# Temporary files
+*.tmp
+.DS_Store
