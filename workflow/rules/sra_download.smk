@@ -15,5 +15,8 @@ rule sra_download:
     threads:
         4
 
+    resources:
+        tmpdir = lambda wildcards: f"data/tmp/sra_download/{wildcards.accession}"
+
     script:
         "../scripts/fasterq-dump.py"

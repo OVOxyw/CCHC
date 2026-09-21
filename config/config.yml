@@ -5,3 +5,18 @@ paths:
   raw: "data/raw_data"
   trimmed: "data/trimmed"
   fastp_report: "output/fastp"
+  quant: 'data/quant'
+
+reference:
+  species: "homo_sapiens"
+  build: "GRCh38"
+  release: 116
+  root: "data/reference"
+
+  genome: "data/reference/Homo_sapiens.GRCh38.dna.primary_assembly.fa.gz"
+  transcriptome: "data/reference/Homo_sapiens.GRCh38.cdna.all.fa.gz"
+  annotation: "data/reference/Homo_sapiens.GRCh38.116.gtf.gz"
+
+  gentrome: "data/reference/gentrome.fa.gz"
+  decoys: "data/reference/decoys.txt"
+  salmon_index: "data/reference/salmon_index"

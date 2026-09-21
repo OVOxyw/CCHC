@@ -4,6 +4,4 @@ channels:
   - nodefaults
 
 dependencies:
-  - sra-tools =3.4.1
-  - pigz =2.8
-  - snakemake-wrapper-utils =0.9.0
+  - salmon =2.6.0

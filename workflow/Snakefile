@@ -9,6 +9,16 @@ runs = list(df["run"])
 raw_path = config["paths"]["raw"]
 trimmed_path = config["paths"]["trimmed"]
 fastp_report_path = config["paths"]["fastp_report"]
+quant_path = config["paths"]["quant"]
+ref_species = config["reference"]["species"]
+ref_build = config["reference"]["build"]
+ref_release = config["reference"]["release"]
+genome = config["reference"]["genome"]
+transcriptome = config["reference"]["transcriptome"]
+annotation = config["reference"]["annotation"]
+salmon_index = config["reference"]["salmon_index"]
+gentrome = config["reference"]["gentrome"]
+decoys = config["reference"]["decoys"]
 
 print("Number of runs:", len(runs))
 
@@ -25,3 +35,5 @@ rule all:
 
 include: "rules/sra_download.smk"
 include: "rules/fastp.smk"
+include: "rules/reference.smk"
+include: "rules/salmon.smk"
