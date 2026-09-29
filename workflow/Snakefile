@@ -25,6 +25,13 @@ print("Number of runs:", len(runs))
 rule all:
     input:
         expand(
+            os.path.join(quant_path, "{accession}", "quant.sf"),
+            accession=runs
+        )
+
+rule download_all:
+    input:
+        expand(
             os.path.join(raw_path, "{accession}_1.fastq.gz"),
             accession=runs
         ),
