@@ -84,7 +84,7 @@ rule salmon_index:
         8
 
     params:
-        extra = "--keepDuplicates"
+        extra = config["params"]["salmon"]["index"]["extra"]
 
     resources:
         tmpdir = "data/tmp/salmon_index"

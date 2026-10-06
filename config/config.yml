@@ -5,7 +5,8 @@ paths:
   raw: "data/raw_data"
   trimmed: "data/trimmed"
   fastp_report: "output/fastp"
-  quant: 'data/quant'
+  quant: "data/quant"
+  qc: "docs/qc"
 
 reference:
   species: "homo_sapiens"
@@ -20,3 +21,23 @@ reference:
   gentrome: "data/reference/gentrome.fa.gz"
   decoys: "data/reference/decoys.txt"
   salmon_index: "data/reference/salmon_index"
+
+params:
+  sra_download:
+    extra: "--split-files"
+
+  fastp:
+    extra: ""
+    adapters: ""
+
+  salmon:
+    quant:
+      libtype: "A"
+      extra: ""
+
+    index:
+      extra: "--keepDuplicates"
+
+  multiqc:
+    extra: ""
+    use_input_files_only: true

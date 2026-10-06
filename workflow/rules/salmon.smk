@@ -5,8 +5,16 @@ rule salmon_quant:
         index = salmon_index
 
     output:
-        quant = os.path.join(quant_path, "{accession}", "quant.sf"),
-        lib = os.path.join(quant_path, "{accession}", "lib_format_counts.json")
+        quant = os.path.join(
+            quant_path,
+            "{accession}",
+            "quant.sf"
+        ),
+        lib = os.path.join(
+            quant_path,
+            "{accession}",
+            "lib_format_counts.json"
+        )
 
     log:
         "workflow/logs/salmon/{accession}.log"
@@ -15,8 +23,8 @@ rule salmon_quant:
         8
 
     params:
-        libtype = "A",
-        extra = ""
+        libtype = config["params"]["salmon"]["quant"]["libtype"],
+        extra = config["params"]["salmon"]["quant"]["extra"]
 
     conda:
         "../envs/salmon.yml"

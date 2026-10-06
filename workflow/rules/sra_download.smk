@@ -10,7 +10,7 @@ rule sra_download:
         "../envs/sra.yml"
 
     params:
-        extra = "--split-files"
+        extra = config["params"]["sra_download"]["extra"]
 
     threads:
         4

@@ -10,6 +10,7 @@ raw_path = config["paths"]["raw"]
 trimmed_path = config["paths"]["trimmed"]
 fastp_report_path = config["paths"]["fastp_report"]
 quant_path = config["paths"]["quant"]
+qc_path = config["paths"]["qc"]
 ref_species = config["reference"]["species"]
 ref_build = config["reference"]["build"]
 ref_release = config["reference"]["release"]
@@ -24,10 +25,8 @@ print("Number of runs:", len(runs))
 
 rule all:
     input:
-        expand(
-            os.path.join(quant_path, "{accession}", "quant.sf"),
-            accession=runs
-        )
+        expand(os.path.join(quant_path, "{accession}", "quant.sf"), accession=runs),
+        os.path.join(qc_path, "multiqc.html")
 
 rule download_all:
     input:
@@ -44,3 +43,4 @@ include: "rules/sra_download.smk"
 include: "rules/fastp.smk"
 include: "rules/reference.smk"
 include: "rules/salmon.smk"
+include: "rules/multiqc.smk"
