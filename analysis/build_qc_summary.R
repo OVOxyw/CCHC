@@ -65,9 +65,23 @@ qc_metrics <- map_dfr(samples$run, function(run) {
   )
 })
 
-# Add sample metadata
+# Add sample metadata and round QC percentages
 qc_summary <- samples %>%
-  left_join(qc_metrics, by = "run")
+  left_join(qc_metrics, by = "run") %>%
+  mutate(
+    across(
+      c(
+        retained_pct,
+        q30_before,
+        q30_after,
+        gc_before,
+        gc_after,
+        duplication_pct,
+        mapping_rate
+      ),
+      ~ round(.x, 2)
+    )
+  )
 
 # Save summary table
 write_tsv(
