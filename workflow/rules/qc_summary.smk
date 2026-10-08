@@ -7,7 +7,7 @@ rule qc_summary:
         hbrna = expand(os.path.join(contamination_qc_path, "{accession}_{read}.hbrna.flagstat"), accession=runs, read=["1", "2"])
     output:
         summary = os.path.join(qc_summary_path, "sample_qc_summary.tsv"),
-        whole_blood = os.path.join(qc_summary_path, "whole_blood_qc_mqc.tsv")
+        whole_blood = os.path.join(qc_summary_path, "whole_blood_qc.tsv")
     conda:
         "../envs/qc_summary.yml"
     log:
