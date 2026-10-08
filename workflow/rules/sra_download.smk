@@ -1,7 +1,7 @@
 rule sra_download:
     output:
-        r1 = protected(os.path.join(raw_path, "{accession}_1.fastq.gz")),
-        r2 = protected(os.path.join(raw_path, "{accession}_2.fastq.gz"))
+        r1 = temp(os.path.join(raw_path, "{accession}_1.fastq.gz")),
+        r2 = temp(os.path.join(raw_path, "{accession}_2.fastq.gz"))
     log:
         "workflow/logs/sra_download/{accession}.log"
     conda:
