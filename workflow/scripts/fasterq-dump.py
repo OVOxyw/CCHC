@@ -11,16 +11,13 @@ from snakemake_wrapper_utils.snakemake import get_mem
 log = snakemake.log_fmt_shell(stdout=True, stderr=True)
 extra = snakemake.params.get("extra", "")
 
-
 # Parse memory
 mem_mb = get_mem(snakemake, "MiB")
-
 
 # Outdir
 outdir = os.path.dirname(snakemake.output[0])
 if outdir:
     outdir = f"--outdir {outdir}"
-
 
 # Output compression
 compress = ""
@@ -32,7 +29,6 @@ for output in snakemake.output:
         compress += f"pigz -p {snakemake.threads} {out_name}; "
     elif out_ext == ".bz2":
         compress += f"pbzip2 -p{snakemake.threads} {mem} {out_name}; "
-
 
 with tempfile.TemporaryDirectory() as tmpdir:
     mem = f"--mem {mem_mb}M" if mem_mb else ""

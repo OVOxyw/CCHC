@@ -11,7 +11,6 @@ rule get_genome:
     wrapper:
         "v9.12.0/bio/reference/ensembl-sequence"
 
-
 rule get_transcriptome:
     output:
         transcriptome
@@ -24,7 +23,6 @@ rule get_transcriptome:
         "workflow/logs/reference/get_transcriptome.log"
     wrapper:
         "v9.12.0/bio/reference/ensembl-sequence"
-
 
 rule get_annotation:
     output:
@@ -42,10 +40,8 @@ rule get_annotation:
 rule make_decoys:
     input:
         genome = genome
-
     output:
         decoys = decoys
-
     shell:
         """
         gzip -dc {input.genome} \
@@ -62,35 +58,26 @@ rule make_gentrome:
 
     output:
         gentrome = gentrome
-
     log:
         "workflow/logs/reference/make_gentrome.log"
-
     shell:
         "cat {input.transcriptome} {input.genome} > {output.gentrome} 2> {log}"
-
+        
 rule salmon_index:
     input:
         sequences = gentrome,
         decoys = decoys
-
     output:
         directory(salmon_index)
-
     conda:
         "../envs/salmon.yml"
-
     threads:
         8
-
     params:
         extra = config["params"]["salmon"]["index"]["extra"]
-
     resources:
         tmpdir = "data/tmp/salmon_index"
-
     log:
         "workflow/logs/reference/salmon_index.log"
-
     wrapper:
         "v9.17.0/bio/salmon/index"

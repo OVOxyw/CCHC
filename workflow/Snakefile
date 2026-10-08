@@ -11,6 +11,7 @@ trimmed_path = config["paths"]["trimmed"]
 fastp_report_path = config["paths"]["fastp_report"]
 quant_path = config["paths"]["quant"]
 qc_path = config["paths"]["qc"]
+qc_summary_path = config["paths"]["qc_summary"]
 ref_species = config["reference"]["species"]
 ref_build = config["reference"]["build"]
 ref_release = config["reference"]["release"]
@@ -20,12 +21,17 @@ annotation = config["reference"]["annotation"]
 salmon_index = config["reference"]["salmon_index"]
 gentrome = config["reference"]["gentrome"]
 decoys = config["reference"]["decoys"]
+rrna_ref = config["reference"]["rrna"]
+hbrna_ref = config["reference"]["hbrna"]
+contamination_tmp_path = config["paths"]["contamination_tmp"]
+contamination_qc_path = config["paths"]["contamination_qc"]
 
 print("Number of runs:", len(runs))
 
 rule all:
     input:
         expand(os.path.join(quant_path, "{accession}", "quant.sf"), accession=runs),
+        os.path.join(qc_summary_path, "sample_qc_summary.tsv"),
         os.path.join(qc_path, "multiqc.html")
 
 rule download_all:
@@ -43,4 +49,6 @@ include: "rules/sra_download.smk"
 include: "rules/fastp.smk"
 include: "rules/reference.smk"
 include: "rules/salmon.smk"
+include: "rules/contamination_qc.smk"
+include: "rules/qc_summary.smk"
 include: "rules/multiqc.smk"

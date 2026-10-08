@@ -25,7 +25,9 @@ hbrna_files <- unlist(
 output_file <- as.character(
   snakemake@output[["summary"]]
 )
-
+whole_blood_file <- as.character(
+  snakemake@output[["whole_blood"]]
+)
 
 # Sample metadata
 samples <- read_tsv(
@@ -224,7 +226,7 @@ qc_summary <- samples |>
     )
   )
 
-# Write output
+# Write full QC summary
 dir.create(
   dirname(output_file),
   recursive = TRUE,
@@ -234,8 +236,84 @@ write_tsv(
   qc_summary,
   output_file
 )
+
+# MultiQC custom content
+whole_blood_qc <- qc_summary |>
+  select(
+    run,
+    rrna_r1_pct,
+    rrna_r2_pct,
+    hbrna_r1_pct,
+    hbrna_r2_pct
+  )
+mqc_header <- c(
+  "# id: 'whole_blood_contamination_qc'",
+  "# section_name: 'Whole-blood contamination QC'",
+  "# description: 'Percentage of primary reads mapping to rRNA and haemoglobin RNA references. R1 and R2 are shown separately.'",
+  "# format: 'tsv'",
+  "# plot_type: 'table'",
+  "# pconfig:",
+  "#   id: 'whole_blood_contamination_qc_table'",
+  "#   title: 'Whole-blood contamination QC'",
+  "#   col1_header: 'Run'",
+  "#   no_violin: true",
+  "# headers:",
+  "#   rrna_r1_pct:",
+  "#     title: 'rRNA R1'",
+  "#     description: 'Primary R1 reads mapping to the rRNA reference'",
+  "#     suffix: '%'",
+  "#     min: 0",
+  "#     max: 100",
+  "#     format: '{:,.2f}'",
+  "#   rrna_r2_pct:",
+  "#     title: 'rRNA R2'",
+  "#     description: 'Primary R2 reads mapping to the rRNA reference'",
+  "#     suffix: '%'",
+  "#     min: 0",
+  "#     max: 100",
+  "#     format: '{:,.2f}'",
+  "#   hbrna_r1_pct:",
+  "#     title: 'HbRNA R1'",
+  "#     description: 'Primary R1 reads mapping to the haemoglobin RNA reference'",
+  "#     suffix: '%'",
+  "#     min: 0",
+  "#     max: 100",
+  "#     format: '{:,.2f}'",
+  "#   hbrna_r2_pct:",
+  "#     title: 'HbRNA R2'",
+  "#     description: 'Primary R2 reads mapping to the haemoglobin RNA reference'",
+  "#     suffix: '%'",
+  "#     min: 0",
+  "#     max: 100",
+  "#     format: '{:,.2f}'"
+)
+data_lines <- capture.output(
+  write.table(
+    whole_blood_qc,
+    sep = "\t",
+    row.names = FALSE,
+    quote = FALSE
+  )
+)
+dir.create(
+  dirname(whole_blood_file),
+  recursive = TRUE,
+  showWarnings = FALSE
+)
+writeLines(
+  c(
+    mqc_header,
+    data_lines
+  ),
+  whole_blood_file
+)
 cat(
   "QC summary written for",
   nrow(qc_summary),
+  "samples\n"
+)
+cat(
+  "Whole-blood MultiQC table written for",
+  nrow(whole_blood_qc),
   "samples\n"
 )

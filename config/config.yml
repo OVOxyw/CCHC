@@ -6,6 +6,9 @@ paths:
   trimmed: "data/trimmed"
   fastp_report: "output/fastp"
   quant: "data/quant"
+  contamination_tmp: "data/tmp/contamination_qc"
+  contamination_qc: "output/contamination_qc" 
+  qc_summary: "output/qc"
   qc: "docs/qc"
 
 reference:
@@ -22,22 +25,34 @@ reference:
   decoys: "data/reference/decoys.txt"
   salmon_index: "data/reference/salmon_index"
 
+  rrna: "data/reference/qc/rrna/all_rrna.fa"
+  hbrna: "data/reference/qc/hbrna/hbrna.fa"
+
 params:
   sra_download:
     extra: "--split-files"
 
   fastp:
-    extra: ""
-    adapters: ""
+    extra: "--n_base_limit 1 
+            --average_qual 30 
+            --length_required 35
+            --correction 
+            --overrepresentation_analysis 
+            --disable_trim_poly_g"
+    adapters: "--detect_adapter_for_pe"
 
   salmon:
     quant:
-      libtype: "A"
-      extra: ""
+      extra: "--incompatPrior 0.0
+              --numGibbsSamples 100 
+              --thinningFactor 16 
+              --gcBias 
+              --seqBias 
+              --softclip"
 
     index:
       extra: "--keepDuplicates"
 
   multiqc:
     extra: ""
-    use_input_files_only: true
+    use_input_files_only: false

@@ -10,20 +10,17 @@ extra = snakemake.params.get("extra", "")
 adapters = snakemake.params.get("adapters", "")
 log = snakemake.log_fmt_shell(stdout=True, stderr=True)
 
-
 # Assert input
 n = len(snakemake.input.sample)
 assert (
     n == 1 or n == 2
 ), "input->sample must have 1 (single-end) or 2 (paired-end) elements."
 
-
 # Input files
 if n == 1:
     reads = "--in1 {}".format(snakemake.input.sample)
 else:
     reads = "--in1 {} --in2 {}".format(*snakemake.input.sample)
-
 
 # Output files
 trimmed_paths = snakemake.output.get("trimmed", None)
@@ -56,17 +53,14 @@ if trimmed_paths:
 else:
     trimmed = ""
 
-
 # Output failed reads
 failed = snakemake.output.get("failed", None)
 if failed:
     trimmed += f" --failed_out {failed}"
 
-
 # Stats
 html = "--html {}".format(snakemake.output.html)
 json = "--json {}".format(snakemake.output.json)
-
 
 shell(
     "(fastp --thread {snakemake.threads} "

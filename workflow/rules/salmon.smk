@@ -3,7 +3,6 @@ rule salmon_quant:
         r1 = os.path.join(trimmed_path, "{accession}_1.fastq.gz"),
         r2 = os.path.join(trimmed_path, "{accession}_2.fastq.gz"),
         index = salmon_index
-
     output:
         quant = os.path.join(
             quant_path,
@@ -15,19 +14,16 @@ rule salmon_quant:
             "{accession}",
             "lib_format_counts.json"
         )
-
     log:
         "workflow/logs/salmon/{accession}.log"
-
     threads:
         8
-
+    resources:
+        mem_mb = 32000,
+        runtime = 240
     params:
-        libtype = config["params"]["salmon"]["quant"]["libtype"],
         extra = config["params"]["salmon"]["quant"]["extra"]
-
     conda:
         "../envs/salmon.yml"
-
     wrapper:
         "v9.16.0/bio/salmon/quant"
