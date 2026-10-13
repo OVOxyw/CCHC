@@ -1,0 +1,203 @@
+---
+title: "Primary RNA-seq QC"
+date: "`r format(Sys.Date(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    theme: sandstone
+---
+
+```{r setup, echo=FALSE}
+knitr::opts_chunk$set(
+  message = FALSE,
+  warning = FALSE,
+  fig.width = 10,
+  fig.height = 7,
+  fig.align = "center"
+)
+
+library(tidyverse)
+
+theme_set(theme_bw())
+
+qc <- read_tsv(
+  "../output/qc/sample_qc_summary.tsv",
+  show_col_types = FALSE
+) |>
+  mutate(
+    rrna_mean_pct = (rrna_r1_pct + rrna_r2_pct) / 2,
+    hbrna_mean_pct = (hbrna_r1_pct + hbrna_r2_pct) / 2
+  )
+```
+
+# Overview
+
+```{r overview}
+tibble(
+  samples = nrow(qc),
+  individuals = n_distinct(qc$individual)
+) |>
+  knitr::kable()
+```
+
+# QC Summary
+
+```{r summary}
+qc |>
+  summarise(
+    mapping_median = median(mapping_rate, na.rm = TRUE),
+    decoy_median = median(decoy_pct, na.rm = TRUE),
+    compatible_median = median(library_compatible_pct, na.rm = TRUE),
+    fragment_length_median = median(fragment_length_mean, na.rm = TRUE),
+    rrna_median = median(rrna_mean_pct, na.rm = TRUE),
+    hbrna_median = median(hbrna_mean_pct, na.rm = TRUE)
+  ) |>
+  knitr::kable(
+    digits = 2
+  )
+```
+
+# QC Visualisations {.tabset}
+
+## Mapping Rate
+
+```{r mapping}
+qc |>
+  arrange(mapping_rate) |>
+  mutate(sample_order = row_number()) |>
+  ggplot(
+    aes(sample_order, mapping_rate)
+  ) +
+  geom_point() +
+  labs(
+    x = "Samples",
+    y = "Salmon Mapping Rate (%)"
+  )
+```
+
+## Decoy Alignment
+
+```{r decoy}
+qc |>
+  arrange(decoy_pct) |>
+  mutate(sample_order = row_number()) |>
+  ggplot(
+    aes(sample_order, decoy_pct)
+  ) +
+  geom_point() +
+  labs(
+    x = "Samples",
+    y = "Decoy Fragments (%)"
+  )
+```
+
+## Mapping vs Decoy
+
+```{r mapping-decoy}
+qc |>
+  ggplot(
+    aes(decoy_pct, mapping_rate)
+  ) +
+  geom_point() +
+  geom_smooth(
+    method = "lm",
+    se = FALSE
+  ) +
+  labs(
+    x = "Decoy Fragments (%)",
+    y = "Salmon Mapping Rate (%)"
+  )
+```
+
+## Library Compatibility
+
+```{r compatibility}
+qc |>
+  arrange(library_compatible_pct) |>
+  mutate(sample_order = row_number()) |>
+  ggplot(
+    aes(sample_order, library_compatible_pct)
+  ) +
+  geom_point() +
+  labs(
+    x = "Samples",
+    y = "Library-Compatible Fragments (%)"
+  )
+```
+
+## Fragment Length
+
+```{r fragment-length}
+qc |>
+  arrange(fragment_length_mean) |>
+  mutate(sample_order = row_number()) |>
+  ggplot(
+    aes(sample_order, fragment_length_mean)
+  ) +
+  geom_point() +
+  labs(
+    x = "Samples",
+    y = "Mean Fragment Length (bp)"
+  )
+```
+
+## rRNA
+
+```{r rrna}
+qc |>
+  arrange(rrna_mean_pct) |>
+  mutate(sample_order = row_number()) |>
+  ggplot(
+    aes(sample_order, rrna_mean_pct)
+  ) +
+  geom_point() +
+  labs(
+    x = "Samples",
+    y = "Mean rRNA Mapping (%)"
+  )
+```
+
+## HbRNA
+
+```{r hbrna}
+qc |>
+  arrange(hbrna_mean_pct) |>
+  mutate(sample_order = row_number()) |>
+  ggplot(
+    aes(sample_order, hbrna_mean_pct)
+  ) +
+  geom_point() +
+  labs(
+    x = "Samples",
+    y = "Mean HbRNA Mapping (%)"
+  )
+```
+
+# Lowest Mapping Samples
+
+```{r low-mapping}
+qc |>
+  arrange(mapping_rate) |>
+  select(
+    run,
+    individual,
+    timepoint,
+    mapping_rate,
+    decoy_pct,
+    library_compatible_pct,
+    rrna_mean_pct,
+    hbrna_mean_pct
+  ) |>
+  slice_head(n = 15) |>
+  knitr::kable(
+    digits = 2
+  )
+```
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
