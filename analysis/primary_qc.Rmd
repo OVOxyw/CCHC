@@ -10,7 +10,7 @@ output:
 ---
 
 ```{r setup, echo=FALSE}
-# No X11 on Phoenix: make png() (used by knitr and ggplotly) render via cairo
+# Phoenix is headless, so use cairo for png rendering
 options(bitmapType = "cairo")
 
 knitr::opts_chunk$set(
@@ -21,6 +21,10 @@ knitr::opts_chunk$set(
   fig.align = "center"
 )
 
+# Load Bioconductor packages before tidyverse
+library(tximport)
+library(rtracklayer)
+library(DESeq2)
 library(tidyverse)
 library(reactable)
 library(plotly)
@@ -28,7 +32,6 @@ library(plotly)
 theme_set(
   theme_bw(base_size = 12)
 )
-
 qc <- read_tsv(
   "../output/qc/sample_qc_summary.tsv",
   show_col_types = FALSE
@@ -36,20 +39,12 @@ qc <- read_tsv(
   mutate(
     rrna_mean_pct =
       (rrna_r1_pct + rrna_r2_pct) / 2,
-
     hbrna_mean_pct =
       (hbrna_r1_pct + hbrna_r2_pct) / 2
   )
 ```
 
-# Introduction
-
-Primary QC metrics for the CCHC RNA-seq samples are summarised below.
-
-No samples are excluded at this stage.
-
 # Data Summary
-
 ```{r data-summary}
 tibble(
   Metric = c(
@@ -74,7 +69,7 @@ tibble(
 
 ```{r group-summary}
 qc |>
-  count(
+  dplyr::count(
     disease_state,
     timepoint,
     name = "Samples"
@@ -87,7 +82,6 @@ qc |>
 ```
 
 ## Sample QC Table
-
 ```{r sample-qc-table}
 sample_qc <- qc |>
   transmute(
@@ -96,7 +90,8 @@ sample_qc <- qc |>
     individual,
     disease_state,
     timepoint,
-    mapping_rate = round(mapping_rate, 2),
+    mapping_rate =
+      round(mapping_rate, 2),
     library_type,
     library_compatible_pct =
       round(library_compatible_pct, 2),
@@ -111,7 +106,6 @@ sample_qc <- qc |>
     hbrna_mean_pct =
       round(hbrna_mean_pct, 2)
   )
-
 reactable(
   sample_qc,
   searchable = TRUE,
@@ -149,10 +143,9 @@ reactable(
 ```
 
 ## Salmon Library Type
-
 ```{r library-type}
 qc |>
-  count(
+  dplyr::count(
     library_type,
     name = "Samples"
   ) |>
@@ -163,9 +156,7 @@ qc |>
 ```
 
 # Salmon QC {.tabset}
-
 ## Mapping Rate
-
 ```{r mapping-rate}
 p <- qc |>
   arrange(mapping_rate) |>
@@ -175,7 +166,9 @@ p <- qc |>
       "Run: ", run,
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
-      "<br>Mapping: ", round(mapping_rate, 2), "%"
+      "<br>Mapping: ",
+      round(mapping_rate, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -190,7 +183,6 @@ p <- qc |>
     x = "Samples ordered by mapping rate",
     y = "Salmon mapping rate (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -198,7 +190,6 @@ ggplotly(
 ```
 
 ## Library Compatibility
-
 ```{r library-compatibility}
 p <- qc |>
   arrange(library_compatible_pct) |>
@@ -209,7 +200,8 @@ p <- qc |>
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
       "<br>Compatible: ",
-      round(library_compatible_pct, 2), "%"
+      round(library_compatible_pct, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -224,7 +216,6 @@ p <- qc |>
     x = "Samples ordered by compatibility",
     y = "Library-compatible fragments (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -232,7 +223,6 @@ ggplotly(
 ```
 
 ## Decoy Alignment
-
 ```{r decoy-alignment}
 p <- qc |>
   arrange(decoy_pct) |>
@@ -242,7 +232,9 @@ p <- qc |>
       "Run: ", run,
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
-      "<br>Decoy: ", round(decoy_pct, 2), "%"
+      "<br>Decoy: ",
+      round(decoy_pct, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -257,7 +249,6 @@ p <- qc |>
     x = "Samples ordered by decoy proportion",
     y = "Decoy fragments (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -265,7 +256,6 @@ ggplotly(
 ```
 
 ## Fragment Length
-
 ```{r fragment-length}
 p <- qc |>
   arrange(fragment_length_mean) |>
@@ -276,7 +266,8 @@ p <- qc |>
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
       "<br>Mean fragment length: ",
-      round(fragment_length_mean, 2), " bp"
+      round(fragment_length_mean, 2),
+      " bp"
     )
   ) |>
   ggplot(
@@ -291,7 +282,6 @@ p <- qc |>
     x = "Samples ordered by fragment length",
     y = "Mean fragment length (bp)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -299,9 +289,7 @@ ggplotly(
 ```
 
 # Whole-blood QC {.tabset}
-
 ## rRNA
-
 ```{r rrna-samples}
 p <- qc |>
   arrange(rrna_mean_pct) |>
@@ -311,7 +299,9 @@ p <- qc |>
       "Run: ", run,
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
-      "<br>rRNA: ", round(rrna_mean_pct, 2), "%"
+      "<br>rRNA: ",
+      round(rrna_mean_pct, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -326,7 +316,6 @@ p <- qc |>
     x = "Samples ordered by rRNA content",
     y = "Mean rRNA mapping (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -338,8 +327,12 @@ p <- qc |>
   mutate(
     hover = paste0(
       "Run: ", run,
-      "<br>R1: ", round(rrna_r1_pct, 2), "%",
-      "<br>R2: ", round(rrna_r2_pct, 2), "%"
+      "<br>R1: ",
+      round(rrna_r1_pct, 2),
+      "%",
+      "<br>R2: ",
+      round(rrna_r2_pct, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -359,7 +352,6 @@ p <- qc |>
     x = "rRNA R1 (%)",
     y = "rRNA R2 (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -367,7 +359,6 @@ ggplotly(
 ```
 
 ## HbRNA
-
 ```{r hbrna-samples}
 p <- qc |>
   arrange(hbrna_mean_pct) |>
@@ -377,7 +368,9 @@ p <- qc |>
       "Run: ", run,
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
-      "<br>HbRNA: ", round(hbrna_mean_pct, 2), "%"
+      "<br>HbRNA: ",
+      round(hbrna_mean_pct, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -392,7 +385,6 @@ p <- qc |>
     x = "Samples ordered by HbRNA content",
     y = "Mean HbRNA mapping (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -404,8 +396,12 @@ p <- qc |>
   mutate(
     hover = paste0(
       "Run: ", run,
-      "<br>R1: ", round(hbrna_r1_pct, 2), "%",
-      "<br>R2: ", round(hbrna_r2_pct, 2), "%"
+      "<br>R1: ",
+      round(hbrna_r1_pct, 2),
+      "%",
+      "<br>R2: ",
+      round(hbrna_r2_pct, 2),
+      "%"
     )
   ) |>
   ggplot(
@@ -425,7 +421,6 @@ p <- qc |>
     x = "HbRNA R1 (%)",
     y = "HbRNA R2 (%)"
   )
-
 ggplotly(
   p,
   tooltip = "text"
@@ -433,7 +428,6 @@ ggplotly(
 ```
 
 # QC Summary
-
 ```{r qc-summary}
 qc_summary <- qc |>
   summarise(
@@ -474,7 +468,6 @@ qc_summary <- qc |>
     Median = median,
     Maximum = max
   )
-
 reactable(
   qc_summary,
   pagination = FALSE,
@@ -482,4 +475,498 @@ reactable(
   striped = TRUE,
   highlight = TRUE
 )
+```
+
+## Import Salmon Counts
+```{r import-expression}
+sample_info <- read_tsv(
+  "../config/samples.tsv",
+  show_col_types = FALSE
+)
+quant_files <- file.path(
+  "../data/quant",
+  sample_info$run,
+  "quant.sf"
+)
+names(quant_files) <- sample_info$run
+if (!all(file.exists(quant_files))) {
+  stop("Some Salmon quant.sf files are missing.")
+}
+gtf <- rtracklayer::import(
+  "../data/reference/Homo_sapiens.GRCh38.116.gtf.gz"
+)
+tx2gene <- as.data.frame(gtf) |>
+  dplyr::filter(
+    !is.na(transcript_id),
+    !is.na(gene_id)
+  ) |>
+  dplyr::select(
+    transcript_id,
+    gene_id
+  ) |>
+  distinct()
+txi <- tximport(
+  quant_files,
+  type = "salmon",
+  tx2gene = tx2gene,
+  ignoreTxVersion = TRUE,
+  dropInfReps = TRUE
+)
+gene_counts <- txi$counts
+stopifnot(
+  ncol(gene_counts) == nrow(sample_info),
+  identical(
+    colnames(gene_counts),
+    sample_info$run
+  )
+)
+tibble(
+  Metric = c(
+    "Salmon quant files",
+    "Imported samples",
+    "Genes"
+  ),
+  Value = c(
+    length(quant_files),
+    ncol(gene_counts),
+    nrow(gene_counts)
+  )
+) |>
+  reactable(
+    pagination = FALSE,
+    bordered = TRUE
+  )
+```
+
+## Variance-stabilised Expression
+```{r vst-expression}
+coldata <- as.data.frame(sample_info)
+rownames(coldata) <- coldata$run
+stopifnot(
+  identical(
+    rownames(coldata),
+    colnames(txi$counts)
+  )
+)
+dds <- DESeqDataSetFromTximport(
+  txi = txi,
+  colData = coldata,
+  design = ~ 1
+)
+keep <- rowSums(
+  counts(dds) >= 10
+) >= 5
+dds <- dds[keep, ]
+vsd <- vst(
+  dds,
+  blind = TRUE
+)
+vst_matrix <- assay(vsd)
+tibble(
+  Metric = c(
+    "Genes before filtering",
+    "Genes retained for PCA",
+    "Samples"
+  ),
+  Value = c(
+    nrow(gene_counts),
+    nrow(vst_matrix),
+    ncol(vst_matrix)
+  )
+) |>
+  reactable(
+    pagination = FALSE,
+    bordered = TRUE
+  )
+```
+
+## PCA
+```{r run-pca}
+pca <- prcomp(
+  t(vst_matrix),
+  center = TRUE,
+  scale. = FALSE
+)
+variance_explained <-
+  (pca$sdev^2 / sum(pca$sdev^2)) * 100
+pca_data <- as.data.frame(
+  pca$x[, 1:4, drop = FALSE]
+) |>
+  rownames_to_column("run") |>
+  left_join(
+    sample_info,
+    by = "run"
+  ) |>
+  mutate(
+    hover = paste0(
+      "Run: ", run,
+      "<br>Sample: ", sample,
+      "<br>Individual: ", individual,
+      "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint
+    )
+  )
+```
+
+### PCA Diagnostics {.tabset}
+#### Variance Explained
+```{r pca-variance}
+pca_variance <- tibble(
+  PC = paste0(
+    "PC",
+    seq_len(min(10, length(variance_explained)))
+  ),
+  Variance = variance_explained[
+    seq_len(min(10, length(variance_explained)))
+  ]
+)
+plot_ly(
+  data = pca_variance,
+  x = ~PC,
+  y = ~Variance,
+  type = "bar",
+  text = ~paste0(
+    PC,
+    ": ",
+    round(Variance, 2),
+    "%"
+  ),
+  hoverinfo = "text"
+) |>
+  layout(
+    xaxis = list(
+      title = "Principal component"
+    ),
+    yaxis = list(
+      title = "Variance explained (%)"
+    )
+  )
+```
+
+#### PC1 vs PC2
+```{r pca-pc1-pc2}
+plot_ly(
+  data = pca_data,
+  x = ~PC1,
+  y = ~PC2,
+  type = "scatter",
+  mode = "markers",
+  text = ~paste0(
+    hover,
+    "<br>PC1: ",
+    round(PC1, 2),
+    "<br>PC2: ",
+    round(PC2, 2)
+  ),
+  hoverinfo = "text"
+) |>
+  layout(
+    hovermode = "closest",
+    xaxis = list(
+      title = paste0(
+        "PC1 (",
+        round(variance_explained[1], 1),
+        "%)"
+      )
+    ),
+    yaxis = list(
+      title = paste0(
+        "PC2 (",
+        round(variance_explained[2], 1),
+        "%)"
+      )
+    )
+  )
+```
+
+#### PC3 vs PC4
+```{r pca-pc3-pc4}
+plot_ly(
+  data = pca_data,
+  x = ~PC3,
+  y = ~PC4,
+  type = "scatter",
+  mode = "markers",
+  text = ~paste0(
+    hover,
+    "<br>PC3: ",
+    round(PC3, 2),
+    "<br>PC4: ",
+    round(PC4, 2)
+  ),
+  hoverinfo = "text"
+) |>
+  layout(
+    hovermode = "closest",
+    xaxis = list(
+      title = paste0(
+        "PC3 (",
+        round(variance_explained[3], 1),
+        "%)"
+      )
+    ),
+    yaxis = list(
+      title = paste0(
+        "PC4 (",
+        round(variance_explained[4], 1),
+        "%)"
+      )
+    )
+  )
+```
+
+# Robust Outlier Detection
+```{r robust-outliers}
+potential_cutoff <-
+  qnorm(0.995)
+unambiguous_cutoff <-
+  qnorm(0.9995)
+robust_scores <- pca_data |>
+  dplyr::select(
+    run,
+    PC1,
+    PC2,
+    PC3,
+    PC4
+  ) |>
+  pivot_longer(
+    cols = PC1:PC4,
+    names_to = "PC",
+    values_to = "score"
+  ) |>
+  group_by(PC) |>
+  mutate(
+    pc_median =
+      median(
+        score,
+        na.rm = TRUE
+      ),
+    pc_mad =
+      mad(
+        score,
+        na.rm = TRUE
+      ),
+    robust_z =
+      if_else(
+        pc_mad > 0,
+        (score - pc_median) / pc_mad,
+        NA_real_
+      ),
+    abs_robust_z =
+      abs(robust_z),
+    outlier_status = case_when(
+      abs_robust_z >= unambiguous_cutoff ~
+        "Unambiguous",
+      abs_robust_z >= potential_cutoff ~
+        "Potential",
+      TRUE ~
+        "No"
+    )
+  ) |>
+  ungroup() |>
+  left_join(
+    sample_info,
+    by = "run"
+  ) |>
+  mutate(
+    hover = paste0(
+      "Run: ", run,
+      "<br>Individual: ", individual,
+      "<br>", PC,
+      ": ", round(score, 2),
+      "<br>Robust Z: ",
+      round(robust_z, 2),
+      "<br>Status: ",
+      outlier_status
+    )
+  )
+```
+
+## Robust Z-score Distribution
+```{r robust-z-plot}
+plot_ly(
+  data = robust_scores,
+  x = ~PC,
+  y = ~abs_robust_z,
+  type = "scatter",
+  mode = "markers",
+  text = ~hover,
+  hoverinfo = "text"
+) |>
+  layout(
+    hovermode = "closest",
+    xaxis = list(
+      title = "Principal component"
+    ),
+    yaxis = list(
+      title = "Absolute robust Z-score"
+    ),
+    shapes = list(
+      list(
+        type = "line",
+        xref = "paper",
+        x0 = 0,
+        x1 = 1,
+        y0 = potential_cutoff,
+        y1 = potential_cutoff,
+        line = list(
+          dash = "dash"
+        )
+      ),
+      list(
+        type = "line",
+        xref = "paper",
+        x0 = 0,
+        x1 = 1,
+        y0 = unambiguous_cutoff,
+        y1 = unambiguous_cutoff,
+        line = list(
+          dash = "dot"
+        )
+      )
+    )
+  )
+```
+
+## Outlier Summary
+```{r outlier-summary}
+sample_outliers <- robust_scores |>
+  group_by(run) |>
+  summarise(
+    max_abs_robust_z =
+      max(
+        abs_robust_z,
+        na.rm = TRUE
+      ),
+    outlier_status = case_when(
+      any(
+        outlier_status == "Unambiguous"
+      ) ~ "Unambiguous",
+      any(
+        outlier_status == "Potential"
+      ) ~ "Potential",
+      TRUE ~ "No"
+    ),
+    flagged_pc = paste(
+      PC[outlier_status != "No"],
+      collapse = ", "
+    ),
+    .groups = "drop"
+  ) |>
+  left_join(
+    sample_info,
+    by = "run"
+  ) |>
+  left_join(
+    qc |>
+      dplyr::select(
+        run,
+        mapping_rate,
+        library_compatible_pct,
+        decoy_pct,
+        fragment_length_mean,
+        rrna_mean_pct,
+        hbrna_mean_pct
+      ),
+    by = "run"
+  )
+outlier_counts <- sample_outliers |>
+  dplyr::count(
+    outlier_status,
+    name = "Samples"
+  )
+reactable(
+  outlier_counts,
+  pagination = FALSE,
+  bordered = TRUE,
+  striped = TRUE,
+  highlight = TRUE
+)
+```
+
+## Flagged Samples
+```{r flagged-samples}
+flagged_samples <- sample_outliers |>
+  dplyr::filter(
+    outlier_status != "No"
+  ) |>
+  mutate(
+    max_abs_robust_z =
+      round(max_abs_robust_z, 2),
+    mapping_rate =
+      round(mapping_rate, 2),
+    library_compatible_pct =
+      round(library_compatible_pct, 2),
+    decoy_pct =
+      round(decoy_pct, 2),
+    fragment_length_mean =
+      round(fragment_length_mean, 2),
+    rrna_mean_pct =
+      round(rrna_mean_pct, 2),
+    hbrna_mean_pct =
+      round(hbrna_mean_pct, 2)
+  ) |>
+  arrange(
+    desc(max_abs_robust_z)
+  ) |>
+  dplyr::select(
+    run,
+    individual,
+    disease_state,
+    timepoint,
+    outlier_status,
+    flagged_pc,
+    max_abs_robust_z,
+    mapping_rate,
+    library_compatible_pct,
+    decoy_pct,
+    fragment_length_mean,
+    rrna_mean_pct,
+    hbrna_mean_pct
+  )
+reactable(
+  flagged_samples,
+  searchable = TRUE,
+  sortable = TRUE,
+  resizable = TRUE,
+  filterable = TRUE,
+  showPageSizeOptions = TRUE,
+  defaultPageSize = 10,
+  striped = TRUE,
+  highlight = TRUE,
+  columns = list(
+    outlier_status = colDef(
+      name = "Outlier status"
+    ),
+    flagged_pc = colDef(
+      name = "Flagged PC"
+    ),
+    max_abs_robust_z = colDef(
+      name = "Max |robust Z|"
+    ),
+    mapping_rate = colDef(
+      name = "Mapping (%)"
+    ),
+    library_compatible_pct = colDef(
+      name = "Compatible (%)"
+    ),
+    decoy_pct = colDef(
+      name = "Decoy (%)"
+    ),
+    fragment_length_mean = colDef(
+      name = "Fragment mean"
+    ),
+    rrna_mean_pct = colDef(
+      name = "rRNA (%)"
+    ),
+    hbrna_mean_pct = colDef(
+      name = "HbRNA (%)"
+    )
+  )
+)
+```
+
+# Session Information
+```{r session-info}
+sessionInfo()
 ```

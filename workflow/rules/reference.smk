@@ -6,6 +6,7 @@ rule get_genome:
         datatype = "dna",
         build = ref_build,
         release = ref_release
+    localrule: True
     log:
         "workflow/logs/reference/get_genome.log"
     wrapper:
@@ -19,6 +20,7 @@ rule get_transcriptome:
         datatype = "cdna",
         build = ref_build,
         release = ref_release
+    localrule: True
     log:
         "workflow/logs/reference/get_transcriptome.log"
     wrapper:
@@ -32,6 +34,7 @@ rule get_annotation:
         build = ref_build,
         release = ref_release,
         flavor = ""
+    localrule: True
     log:
         "workflow/logs/reference/get_annotation.log"
     wrapper:
