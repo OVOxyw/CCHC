@@ -10,6 +10,9 @@ output:
 ---
 
 ```{r setup, echo=FALSE}
+# No X11 on Phoenix: make png() (used by knitr and ggplotly) render via cairo
+options(bitmapType = "cairo")
+
 knitr::opts_chunk$set(
   message = FALSE,
   warning = FALSE,
