@@ -3,6 +3,8 @@ rule qc_summary:
         samples = config["samples"]["file"],
         fastp = expand(os.path.join(fastp_report_path, "{accession}.json"), accession=runs),
         salmon = expand(os.path.join(quant_path, "{accession}", "quant.sf"), accession=runs),
+        salmon_meta = expand(os.path.join(quant_path, "{accession}", "aux_info", "meta_info.json"), accession=runs),
+        salmon_lib = expand(os.path.join(quant_path, "{accession}", "lib_format_counts.json"), accession=runs),
         rrna = expand(os.path.join(contamination_qc_path, "{accession}_{read}.rrna.flagstat"), accession=runs, read=["1", "2"]),
         hbrna = expand(os.path.join(contamination_qc_path, "{accession}_{read}.hbrna.flagstat"), accession=runs, read=["1", "2"])
     output:

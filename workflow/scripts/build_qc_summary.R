@@ -74,17 +74,37 @@ salmon_qc <- map_dfr(
       "aux_info",
       "meta_info.json"
     )
-    x <- fromJSON(meta_file)
+    lib_file <- file.path(
+      dirname(file),
+      "lib_format_counts.json"
+    )
+    meta <- fromJSON(meta_file)
+    lib <- fromJSON(lib_file)
     tibble(
       run = run,
       salmon_processed_fragments =
-        x$num_processed,
+        meta$num_processed,
       salmon_mapped_fragments =
-        x$num_mapped,
+        meta$num_mapped,
       mapping_rate =
-        x$percent_mapped,
+        meta$percent_mapped,
       library_type =
-        x$detected_library_type
+        meta$detected_library_type,
+      library_compatible_pct =
+        lib$compatible_fragment_ratio * 100,
+      fragment_length_mean =
+        meta$frag_length_mean,
+      fragment_length_sd =
+        meta$frag_length_sd,
+      decoy_fragments =
+        meta$num_decoy_fragments,
+      decoy_pct =
+        meta$num_decoy_fragments /
+        meta$num_processed * 100,
+      concordant_consistent_fragments =
+        lib$num_frags_with_concordant_consistent_mappings,
+      inconsistent_or_orphan_fragments =
+        lib$num_frags_with_inconsistent_or_orphan_mappings
     )
   }
 )
@@ -208,23 +228,27 @@ qc_summary <- samples |>
     by = "run"
   ) |>
   mutate(
-    across(
-      c(
-        retained_pct,
-        q30_before,
-        q30_after,
-        gc_before,
-        gc_after,
-        duplication_pct,
-        mapping_rate,
-        rrna_r1_pct,
-        rrna_r2_pct,
-        hbrna_r1_pct,
-        hbrna_r2_pct
-      ),
-      ~ round(.x, 2)
-    )
+  across(
+    c(
+      retained_pct,
+      q30_before,
+      q30_after,
+      gc_before,
+      gc_after,
+      duplication_pct,
+      mapping_rate,
+      library_compatible_pct,
+      fragment_length_mean,
+      fragment_length_sd,
+      decoy_pct,
+      rrna_r1_pct,
+      rrna_r2_pct,
+      hbrna_r1_pct,
+      hbrna_r2_pct
+    ),
+    ~ round(.x, 2)
   )
+)
 
 # Whole-blood QC table
 whole_blood_qc <- qc_summary |>

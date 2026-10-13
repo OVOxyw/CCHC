@@ -13,6 +13,12 @@ rule salmon_quant:
             quant_path,
             "{accession}",
             "lib_format_counts.json"
+        ),
+        meta = os.path.join(
+            quant_path,
+            "{accession}",
+            "aux_info",
+            "meta_info.json"
         )
     log:
         "workflow/logs/salmon/{accession}.log"
