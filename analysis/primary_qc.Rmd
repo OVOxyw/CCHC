@@ -619,7 +619,16 @@ pca_variance <- tibble(
   Variance = variance_explained[
     seq_len(min(10, length(variance_explained)))
   ]
-)
+) |>
+  mutate(
+    PC = factor(
+      PC,
+      levels = paste0(
+        "PC",
+        seq_len(min(10, length(variance_explained)))
+      )
+    )
+  )
 plot_ly(
   data = pca_variance,
   x = ~PC,
@@ -978,6 +987,272 @@ reactable(
     ),
     hbrna_mean_pct = colDef(
       name = "HbRNA (%)"
+    )
+  )
+)
+```
+
+# QC Association with PCA Outliers
+```{r qc-association-data}
+qc_metric_labels <- c(
+  mapping_rate = "Mapping rate (%)",
+  library_compatible_pct = "Library compatibility (%)",
+  decoy_pct = "Decoy fragments (%)",
+  fragment_length_mean = "Mean fragment length (bp)",
+  rrna_mean_pct = "rRNA (%)",
+  hbrna_mean_pct = "HbRNA (%)"
+)
+qc_association <- sample_outliers |>
+  mutate(
+    outlier_binary = if_else(
+      outlier_status == "No",
+      "No",
+      "Flagged"
+    ),
+    outlier_binary = factor(
+      outlier_binary,
+      levels = c(
+        "No",
+        "Flagged"
+      )
+    )
+  )
+qc_association_long <- qc_association |>
+  dplyr::select(
+    run,
+    individual,
+    disease_state,
+    timepoint,
+    outlier_status,
+    outlier_binary,
+    max_abs_robust_z,
+    all_of(
+      names(qc_metric_labels)
+    )
+  ) |>
+  pivot_longer(
+    cols = all_of(
+      names(qc_metric_labels)
+    ),
+    names_to = "metric",
+    values_to = "value"
+  ) |>
+  mutate(
+    metric_label = factor(
+      metric,
+      levels = names(qc_metric_labels),
+      labels = unname(qc_metric_labels)
+    ),
+    hover = paste0(
+      "Run: ", run,
+      "<br>Individual: ", individual,
+      "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint,
+      "<br>Outlier status: ", outlier_status,
+      "<br>QC value: ", round(value, 2),
+      "<br>Max |robust Z|: ",
+      round(max_abs_robust_z, 2)
+    )
+  )
+```
+
+## QC Metrics by Outlier Status
+```{r qc-association-boxplots}
+p <- qc_association_long |>
+  ggplot(
+    aes(
+      x = outlier_binary,
+      y = value
+    )
+  ) +
+  geom_boxplot(
+    outlier.shape = NA
+  ) +
+  geom_jitter(
+    aes(
+      text = hover
+    ),
+    width = 0.15,
+    height = 0
+  ) +
+  facet_wrap(
+    ~ metric_label,
+    scales = "free_y",
+    ncol = 2
+  ) +
+  labs(
+    x = "PCA outlier status",
+    y = NULL
+  ) +
+  theme(
+    strip.text = element_text(
+      face = "bold"
+    )
+  )
+ggplotly(
+  p,
+  tooltip = "text"
+)
+```
+
+## QC Metrics vs PCA Outlier Strength
+```{r qc-vs-robust-z}
+p <- qc_association_long |>
+  ggplot(
+    aes(
+      x = value,
+      y = max_abs_robust_z
+    )
+  ) +
+  geom_point(
+    aes(
+      shape = outlier_status,
+      text = hover
+    )
+  ) +
+  geom_hline(
+    yintercept = potential_cutoff,
+    linetype = 2
+  ) +
+  geom_hline(
+    yintercept = unambiguous_cutoff,
+    linetype = 3
+  ) +
+  facet_wrap(
+    ~ metric_label,
+    scales = "free_x",
+    ncol = 2
+  ) +
+  labs(
+    x = "QC metric value",
+    y = "Maximum absolute robust Z-score",
+    shape = "Outlier status"
+  ) +
+  theme(
+    strip.text = element_text(
+      face = "bold"
+    )
+  )
+ggplotly(
+  p,
+  tooltip = "text"
+)
+```
+
+## QC Association Summary
+```{r qc-association-summary}
+qc_association_summary <- qc_association_long |>
+  group_by(
+    metric,
+    metric_label
+  ) |>
+  summarise(
+    non_flagged_n =
+      sum(
+        outlier_binary == "No" &
+          !is.na(value)
+      ),
+    flagged_n =
+      sum(
+        outlier_binary == "Flagged" &
+          !is.na(value)
+      ),
+    non_flagged_median =
+      median(
+        value[
+          outlier_binary == "No"
+        ],
+        na.rm = TRUE
+      ),
+    flagged_median =
+      median(
+        value[
+          outlier_binary == "Flagged"
+        ],
+        na.rm = TRUE
+      ),
+    spearman_rho =
+      suppressWarnings(
+        cor(
+          value,
+          max_abs_robust_z,
+          method = "spearman",
+          use = "complete.obs"
+        )
+      ),
+    wilcoxon_p =
+      tryCatch(
+        wilcox.test(
+          value ~ outlier_binary,
+          exact = FALSE
+        )$p.value,
+        error = function(e) {
+          NA_real_
+        }
+      ),
+    .groups = "drop"
+  ) |>
+  mutate(
+    FDR =
+      p.adjust(
+        wilcoxon_p,
+        method = "BH"
+      )
+  ) |>
+  arrange(
+    FDR,
+    desc(
+      abs(spearman_rho)
+    )
+  ) |>
+  transmute(
+    Metric = as.character(metric_label),
+    `Non-flagged n` = non_flagged_n,
+    `Flagged n` = flagged_n,
+    `Non-flagged median` =
+      round(
+        non_flagged_median,
+        2
+      ),
+    `Flagged median` =
+      round(
+        flagged_median,
+        2
+      ),
+    `Spearman rho` =
+      round(
+        spearman_rho,
+        3
+      ),
+    `Wilcoxon p` =
+      signif(
+        wilcoxon_p,
+        3
+      ),
+    FDR =
+      signif(
+        FDR,
+        3
+      )
+  )
+reactable(
+  qc_association_summary,
+  pagination = FALSE,
+  bordered = TRUE,
+  striped = TRUE,
+  highlight = TRUE,
+  columns = list(
+    Metric = colDef(
+      name = "QC metric"
+    ),
+    `Spearman rho` = colDef(
+      name = "Spearman rho"
+    ),
+    `Wilcoxon p` = colDef(
+      name = "Wilcoxon p"
+    ),
+    FDR = colDef(
+      name = "BH-adjusted p"
     )
   )
 )
