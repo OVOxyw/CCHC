@@ -651,6 +651,8 @@ plot_ly(
   y = ~PC2,
   type = "scatter",
   mode = "markers",
+  color = ~disease_state,
+  symbol = ~timepoint,
   text = ~paste0(
     hover,
     "<br>PC1: ",
@@ -662,6 +664,11 @@ plot_ly(
 ) |>
   layout(
     hovermode = "closest",
+    legend = list(
+      title = list(
+        text = "Group / timepoint"
+      )
+    ),
     xaxis = list(
       title = paste0(
         "PC1 (",
@@ -687,6 +694,8 @@ plot_ly(
   y = ~PC4,
   type = "scatter",
   mode = "markers",
+  color = ~disease_state,
+  symbol = ~timepoint,
   text = ~paste0(
     hover,
     "<br>PC3: ",
@@ -698,6 +707,11 @@ plot_ly(
 ) |>
   layout(
     hovermode = "closest",
+    legend = list(
+      title = list(
+        text = "Group / timepoint"
+      )
+    ),
     xaxis = list(
       title = paste0(
         "PC3 (",
@@ -838,7 +852,11 @@ sample_outliers <- robust_scores |>
         abs_robust_z,
         na.rm = TRUE
       ),
-    outlier_status = case_when(
+    flagged_pc = paste(
+      PC[outlier_status != "No"],
+      collapse = ", "
+    ),
+    sample_outlier_status = case_when(
       any(
         outlier_status == "Unambiguous"
       ) ~ "Unambiguous",
@@ -847,11 +865,10 @@ sample_outliers <- robust_scores |>
       ) ~ "Potential",
       TRUE ~ "No"
     ),
-    flagged_pc = paste(
-      PC[outlier_status != "No"],
-      collapse = ", "
-    ),
     .groups = "drop"
+  ) |>
+  rename(
+    outlier_status = sample_outlier_status
   ) |>
   left_join(
     sample_info,
