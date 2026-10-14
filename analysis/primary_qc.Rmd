@@ -1062,18 +1062,22 @@ p <- qc_association_long |>
   ggplot(
     aes(
       x = outlier_binary,
-      y = value
+      y = value,
+      color = outlier_binary
     )
   ) +
   geom_boxplot(
-    outlier.shape = NA
+    outlier.shape = NA,
+    alpha = 0.7
   ) +
   geom_jitter(
     aes(
       text = hover
     ),
     width = 0.15,
-    height = 0
+    height = 0,
+    size = 2,
+    alpha = 0.7
   ) +
   facet_wrap(
     ~ metric_label,
@@ -1082,12 +1086,14 @@ p <- qc_association_long |>
   ) +
   labs(
     x = "PCA outlier status",
-    y = NULL
+    y = NULL,
+    color = "PCA outlier status"
   ) +
   theme(
     strip.text = element_text(
       face = "bold"
-    )
+    ),
+    legend.position = "top"
   )
 ggplotly(
   p,
