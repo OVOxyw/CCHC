@@ -1112,9 +1112,12 @@ p <- qc_association_long |>
   ) +
   geom_point(
     aes(
+      color = outlier_status,
       shape = outlier_status,
       text = hover
-    )
+    ),
+    size = 2.3,
+    alpha = 0.8
   ) +
   geom_hline(
     yintercept = potential_cutoff,
@@ -1132,12 +1135,14 @@ p <- qc_association_long |>
   labs(
     x = "QC metric value",
     y = "Maximum absolute robust Z-score",
+    color = "Outlier status",
     shape = "Outlier status"
   ) +
   theme(
     strip.text = element_text(
       face = "bold"
-    )
+    ),
+    legend.position = "top"
   )
 ggplotly(
   p,
