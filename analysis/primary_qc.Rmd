@@ -607,13 +607,13 @@ flagged_samples <- sample_outliers |>
   dplyr::filter(outlier_status != "No") |>
   mutate(
     max_abs_robust_z = round(max_abs_robust_z, 2),
+    library_size_million = round(library_size_million, 2),
     mapping_rate = round(mapping_rate, 2),
     library_compatible_pct = round(library_compatible_pct, 2),
     decoy_pct = round(decoy_pct, 2),
     fragment_length_mean = round(fragment_length_mean, 2),
     rrna_mean_pct = round(rrna_mean_pct, 2),
-    hbrna_mean_pct = round(hbrna_mean_pct, 2),
-    library_size_million = round(library_size_million, 2)
+    hbrna_mean_pct = round(hbrna_mean_pct, 2)
   ) |>
   arrange(desc(max_abs_robust_z)) |>
   dplyr::select(
@@ -624,6 +624,7 @@ flagged_samples <- sample_outliers |>
     outlier_status,
     flagged_pc,
     max_abs_robust_z,
+    library_size_million,
     mapping_rate,
     library_compatible_pct,
     decoy_pct,
@@ -645,6 +646,7 @@ reactable(
     outlier_status = colDef(name = "Outlier status"),
     flagged_pc = colDef(name = "Flagged PC"),
     max_abs_robust_z = colDef(name = "Max |robust Z|"),
+    library_size_million = colDef(name = "Library size (M fragments)"),
     mapping_rate = colDef(name = "Mapping (%)"),
     library_compatible_pct = colDef(name = "Compatible (%)"),
     decoy_pct = colDef(name = "Decoy (%)"),
@@ -658,6 +660,7 @@ reactable(
 # QC Association with PCA Outliers
 ```{r qc-association-data}
 qc_metric_labels <- c(
+  library_size_million = "Library size (million fragments)",
   mapping_rate = "Mapping rate (%)",
   library_compatible_pct = "Library compatibility (%)",
   decoy_pct = "Decoy fragments (%)",
