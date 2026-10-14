@@ -19,10 +19,9 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r packages-and-settings, echo=FALSE}
+```{r packages-and-settings}
 options(bitmapType = "cairo")
 
-# Load Bioconductor packages before tidyverse
 library(tximport)
 library(rtracklayer)
 library(DESeq2)
@@ -35,7 +34,8 @@ qc <- read_tsv(
   "../output/qc/sample_qc_summary.tsv", show_col_types = FALSE
 ) |>
   mutate(
-    library_size_million = salmon_processed_fragments / 1e6,
+    library_size_input_million = salmon_processed_fragments / 1e6,
+    library_size_output_million = salmon_mapped_fragments / 1e6,
     rrna_mean_pct = (rrna_r1_pct + rrna_r2_pct) / 2,
     hbrna_mean_pct = (hbrna_r1_pct + hbrna_r2_pct) / 2
   )
@@ -71,7 +71,8 @@ sample_qc <- qc |>
     individual,
     disease_state,
     timepoint,
-    library_size_million = round(library_size_million, 2),
+    library_size_input_million = round(library_size_input_million, 2),
+    library_size_output_million = round(library_size_output_million, 2),
     mapping_rate = round(mapping_rate, 2),
     library_type,
     library_compatible_pct = round(library_compatible_pct, 2),
@@ -92,7 +93,8 @@ reactable(
   striped = TRUE,
   highlight = TRUE,
   columns = list(
-    library_size_million = colDef(name = "Library size (M fragments)"),
+    library_size_input_million = colDef(name = "Input (M fragments)"),
+    library_size_output_million = colDef(name = "Mapped (M fragments)"),
     mapping_rate = colDef(name = "Mapping (%)"),
     library_compatible_pct = colDef(name = "Compatible (%)"),
     decoy_pct = colDef(name = "Decoy (%)"),
@@ -137,17 +139,17 @@ ggplotly(p, tooltip = "text")
 ## Library Size
 ```{r library-size}
 p <- qc |>
-  arrange(library_size_million) |>
+  arrange(library_size_input_million) |>
   mutate(
     sample_order = row_number(),
     hover = paste0(
       "Run: ", run,
       "<br>Individual: ", individual,
       "<br>Timepoint: ", timepoint,
-      "<br>Library size: ", round(library_size_million, 2), " million fragments"
+      "<br>Library size: ", round(library_size_input_million, 2), " million fragments"
     )
   ) |>
-  ggplot(aes(sample_order, library_size_million, text = hover)) +
+  ggplot(aes(sample_order, library_size_input_million, text = hover)) +
   geom_point() +
   labs(
     x = "Samples ordered by library size",
@@ -305,7 +307,8 @@ qc_summary <- qc |>
   summarise(
     across(
       c(
-        library_size_million,
+        library_size_input_million,
+        library_size_output_million,
         mapping_rate,
         library_compatible_pct,
         decoy_pct,
@@ -580,7 +583,8 @@ sample_outliers <- robust_scores |>
     qc |>
       dplyr::select(
         run,
-        library_size_million,
+        library_size_input_million,
+        library_size_output_million,
         mapping_rate,
         library_compatible_pct,
         decoy_pct,
@@ -607,7 +611,8 @@ flagged_samples <- sample_outliers |>
   dplyr::filter(outlier_status != "No") |>
   mutate(
     max_abs_robust_z = round(max_abs_robust_z, 2),
-    library_size_million = round(library_size_million, 2),
+    library_size_input_million = round(library_size_input_million, 2),
+    library_size_output_million = round(library_size_output_million, 2),
     mapping_rate = round(mapping_rate, 2),
     library_compatible_pct = round(library_compatible_pct, 2),
     decoy_pct = round(decoy_pct, 2),
@@ -624,7 +629,8 @@ flagged_samples <- sample_outliers |>
     outlier_status,
     flagged_pc,
     max_abs_robust_z,
-    library_size_million,
+    library_size_input_million,
+    library_size_output_million,
     mapping_rate,
     library_compatible_pct,
     decoy_pct,
@@ -646,7 +652,8 @@ reactable(
     outlier_status = colDef(name = "Outlier status"),
     flagged_pc = colDef(name = "Flagged PC"),
     max_abs_robust_z = colDef(name = "Max |robust Z|"),
-    library_size_million = colDef(name = "Library size (M fragments)"),
+    library_size_input_million = colDef(name = "Input (M fragments)"),
+    library_size_output_million = colDef(name = "Mapped (M fragments)"),
     mapping_rate = colDef(name = "Mapping (%)"),
     library_compatible_pct = colDef(name = "Compatible (%)"),
     decoy_pct = colDef(name = "Decoy (%)"),
@@ -660,7 +667,8 @@ reactable(
 # QC Association with PCA Outliers
 ```{r qc-association-data}
 qc_metric_labels <- c(
-  library_size_million = "Library size (million fragments)",
+  library_size_input_million = "Input library size (million fragments)",
+  library_size_output_million = "Output library size (million mapped fragments)",
   mapping_rate = "Mapping rate (%)",
   library_compatible_pct = "Library compatibility (%)",
   decoy_pct = "Decoy fragments (%)",
