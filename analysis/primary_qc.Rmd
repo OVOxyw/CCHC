@@ -435,6 +435,7 @@ outlier_counts <- sample_outliers |>
 reactable(outlier_counts, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
+# Flagged Sample Review
 ## Flagged Samples
 ```{r flagged-samples}
 flagged_samples <- sample_outliers |>
@@ -478,10 +479,11 @@ reactable(
 )
 ```
 
-# Metadata Association with PCA Outliers
-Descriptive only: each individual contributes a baseline and a follow-up sample, so no significance tests are applied to age or sex here.
+# Outlier Association
+## Biological / Sample Metadata {.tabset}
+Age and sex are assessed descriptively because baseline and follow-up samples are paired within individuals.
 
-## Age vs PCA Outlier Strength
+### Age vs PCA Outlier Strength
 ```{r age-vs-robust-z}
 p <- sample_outliers |>
   mutate(
@@ -492,15 +494,15 @@ p <- sample_outliers |>
     )
   ) |>
   ggplot(aes(x = age, y = max_abs_robust_z)) +
-  geom_point(aes(color = outlier_status, shape = timepoint, text = hover), size = 2.3, alpha = 0.8) +
+  geom_point(aes(color = outlier_status, text = hover), size = 2.3, alpha = 0.8) +
   geom_hline(yintercept = potential_cutoff, linetype = 2) +
   geom_hline(yintercept = unambiguous_cutoff, linetype = 3) +
-  labs(x = "Age (years)", y = "Maximum absolute robust Z-score", color = "Outlier status", shape = "Timepoint") +
+  labs(x = "Age (years)", y = "Maximum absolute robust Z-score", color = "Outlier status") +
   theme(legend.position = "top")
 ggplotly(p, tooltip = "text")
 ```
 
-## Sex and PCA Outlier Status
+### Sex and PCA Outlier Status
 ```{r sex-outlier-summary}
 sample_outliers |>
   group_by(sex) |>
@@ -510,7 +512,7 @@ sample_outliers |>
   reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
-# QC Association with PCA Outliers
+## Technical QC {.tabset}
 ```{r qc-association-data}
 qc_metric_labels <- c(
   library_size_input_million = "Input library size (million fragments)",
@@ -539,7 +541,7 @@ qc_association_long <- qc_association |>
   )
 ```
 
-## QC Metrics by Outlier Status
+### QC Metrics by Outlier Status
 ```{r qc-association-boxplots}
 p <- qc_association_long |>
   ggplot(aes(x = outlier_binary, y = value, color = outlier_binary)) +
@@ -551,7 +553,7 @@ p <- qc_association_long |>
 ggplotly(p, tooltip = "text")
 ```
 
-## QC Metrics vs PCA Outlier Strength
+### QC Metrics vs PCA Outlier Strength
 ```{r qc-vs-robust-z}
 p <- qc_association_long |>
   ggplot(aes(x = value, y = max_abs_robust_z)) +
@@ -564,7 +566,7 @@ p <- qc_association_long |>
 ggplotly(p, tooltip = "text")
 ```
 
-## QC Association Summary
+### QC Association Summary
 ```{r qc-association-summary}
 qc_association_summary <- qc_association_long |>
   group_by(metric, metric_label) |>
