@@ -263,7 +263,11 @@ reactable(qc_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highl
 
 ## Import Salmon Counts
 ```{r import-expression}
-sample_info <- read_tsv("../config/samples.tsv", show_col_types = FALSE)
+sample_metadata <- read_csv("../config/PRJNA762935.csv", show_col_types = FALSE) |>
+  dplyr::select(run = Run, age = AGE, sex)
+sample_info <- read_tsv("../config/samples.tsv", show_col_types = FALSE) |>
+  left_join(sample_metadata, by = "run")
+stopifnot(!anyDuplicated(sample_metadata$run), all(sample_info$run %in% sample_metadata$run))
 quant_files <- file.path("../data/quant", sample_info$run, "quant.sf")
 names(quant_files) <- sample_info$run
 if (!all(file.exists(quant_files))) {
@@ -278,8 +282,8 @@ txi <- tximport(quant_files, type = "salmon", tx2gene = tx2gene, ignoreTxVersion
 gene_counts <- txi$counts
 stopifnot(ncol(gene_counts) == nrow(sample_info), identical(colnames(gene_counts), sample_info$run))
 tibble(
-  Metric = c("Salmon quant files", "Imported samples", "Genes"),
-  Value = c(length(quant_files), ncol(gene_counts), nrow(gene_counts))
+  Metric = c("Salmon quant files", "Imported samples", "Genes", "Samples missing age", "Samples missing sex"),
+  Value = c(length(quant_files), ncol(gene_counts), nrow(gene_counts), sum(is.na(sample_info$age)), sum(is.na(sample_info$sex)))
 ) |>
   reactable(pagination = FALSE, bordered = TRUE)
 ```
@@ -309,7 +313,7 @@ pca_data <- as.data.frame(pca$x[, 1:4, drop = FALSE]) |>
   rownames_to_column("run") |>
   left_join(sample_info, by = "run") |>
   mutate(
-    hover = paste0("Run: ", run, "<br>Sample: ", sample, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint)
+    hover = paste0("Run: ", run, "<br>Sample: ", sample, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Age: ", age, "<br>Sex: ", sex)
   )
 ```
 
@@ -448,7 +452,7 @@ flagged_samples <- sample_outliers |>
   ) |>
   arrange(desc(max_abs_robust_z)) |>
   dplyr::select(
-    run, individual, disease_state, timepoint, outlier_status, flagged_pc, max_abs_robust_z,
+    run, individual, disease_state, timepoint, age, sex, outlier_status, flagged_pc, max_abs_robust_z,
     library_size_input_million, library_size_output_million, mapping_rate, library_compatible_pct,
     decoy_pct, fragment_length_mean, rrna_mean_pct, hbrna_mean_pct
   )
@@ -457,6 +461,8 @@ reactable(
   searchable = TRUE, sortable = TRUE, resizable = TRUE, filterable = TRUE,
   showPageSizeOptions = TRUE, defaultPageSize = 10, striped = TRUE, highlight = TRUE,
   columns = list(
+    age = colDef(name = "Age"),
+    sex = colDef(name = "Sex"),
     outlier_status = colDef(name = "Outlier status"),
     flagged_pc = colDef(name = "Flagged PC"),
     max_abs_robust_z = colDef(name = "Max |robust Z|"),
@@ -470,6 +476,38 @@ reactable(
     hbrna_mean_pct = colDef(name = "HbRNA (%)")
   )
 )
+```
+
+# Metadata Association with PCA Outliers
+Descriptive only: each individual contributes a baseline and a follow-up sample, so no significance tests are applied to age or sex here.
+
+## Age vs PCA Outlier Strength
+```{r age-vs-robust-z}
+p <- sample_outliers |>
+  mutate(
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Age: ", age, "<br>Sex: ", sex,
+      "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
+      "<br>Outlier status: ", outlier_status, "<br>Max |robust Z|: ", round(max_abs_robust_z, 2)
+    )
+  ) |>
+  ggplot(aes(x = age, y = max_abs_robust_z)) +
+  geom_point(aes(color = outlier_status, shape = timepoint, text = hover), size = 2.3, alpha = 0.8) +
+  geom_hline(yintercept = potential_cutoff, linetype = 2) +
+  geom_hline(yintercept = unambiguous_cutoff, linetype = 3) +
+  labs(x = "Age (years)", y = "Maximum absolute robust Z-score", color = "Outlier status", shape = "Timepoint") +
+  theme(legend.position = "top")
+ggplotly(p, tooltip = "text")
+```
+
+## Sex and PCA Outlier Status
+```{r sex-outlier-summary}
+sample_outliers |>
+  group_by(sex) |>
+  summarise(Samples = n(), Flagged = sum(outlier_status != "No"), .groups = "drop") |>
+  mutate(`Flagged (%)` = round(Flagged / Samples * 100, 1)) |>
+  rename(Sex = sex) |>
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 # QC Association with PCA Outliers
