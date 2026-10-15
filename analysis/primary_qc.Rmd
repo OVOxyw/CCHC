@@ -62,7 +62,6 @@ qc |>
 ```
 
 ## Sample QC Table
-
 ```{r sample-qc-table}
 sample_qc <- qc |>
   transmute(
@@ -138,24 +137,135 @@ ggplotly(p, tooltip = "text")
 
 ## Library Size
 ```{r library-size}
-p <- qc |>
+library_size_plot <- qc |>
   arrange(library_size_input_million) |>
   mutate(
-    sample_order = row_number(),
+    sample_order = row_number()
+  ) |>
+  dplyr::select(
+    run,
+    individual,
+    disease_state,
+    timepoint,
+    sample_order,
+    library_size_input_million,
+    library_size_output_million
+  ) |>
+  pivot_longer(
+    cols = c(
+      library_size_input_million,
+      library_size_output_million
+    ),
+    names_to = "library_stage",
+    values_to = "library_size_million"
+  ) |>
+  mutate(
+    library_stage = recode(
+      library_stage,
+      library_size_input_million = "Input",
+      library_size_output_million = "Output"
+    ),
     hover = paste0(
       "Run: ", run,
       "<br>Individual: ", individual,
+      "<br>Group: ", disease_state,
       "<br>Timepoint: ", timepoint,
-      "<br>Library size: ", round(library_size_input_million, 2), " million fragments"
+      "<br>Stage: ", library_stage,
+      "<br>Library size: ",
+      round(library_size_million, 2),
+      " million fragments"
+    )
+  )
+p <- library_size_plot |>
+  ggplot(
+    aes(
+      x = sample_order,
+      y = library_size_million,
+      color = library_stage,
+      text = hover
+    )
+  ) +
+  geom_line(
+    aes(
+      group = interaction(
+        run,
+        library_stage
+      )
+    ),
+    alpha = 0
+  ) +
+  geom_point(
+    size = 2,
+    alpha = 0.8
+  ) +
+  facet_wrap(
+    ~ library_stage,
+    ncol = 1,
+    scales = "free_y"
+  ) +
+  labs(
+    x = "Samples ordered by input library size",
+    y = "Library size (million fragments)",
+    color = "Library stage"
+  ) +
+  theme(
+    legend.position = "none",
+    strip.text = element_text(
+      face = "bold"
+    )
+  )
+ggplotly(
+  p,
+  tooltip = "text"
+)
+```
+
+### Input vs Output
+```{r library-size-input-output}
+p <- qc |>
+  mutate(
+    hover = paste0(
+      "Run: ", run,
+      "<br>Individual: ", individual,
+      "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint,
+      "<br>Input: ",
+      round(library_size_input_million, 2),
+      " M",
+      "<br>Output: ",
+      round(library_size_output_million, 2),
+      " M",
+      "<br>Mapping: ",
+      round(mapping_rate, 2),
+      "%"
     )
   ) |>
-  ggplot(aes(sample_order, library_size_input_million, text = hover)) +
-  geom_point() +
+  ggplot(
+    aes(
+      x = library_size_input_million,
+      y = library_size_output_million,
+      color = disease_state,
+      shape = timepoint,
+      text = hover
+    )
+  ) +
+  geom_point(
+    size = 2.5,
+    alpha = 0.8
+  ) +
   labs(
-    x = "Samples ordered by library size",
-    y = "Library size (million processed fragments)"
+    x = "Input library size (million processed fragments)",
+    y = "Output library size (million mapped fragments)",
+    color = "Disease state",
+    shape = "Timepoint"
+  ) +
+  theme(
+    legend.position = "top"
   )
-ggplotly(p, tooltip = "text")
+ggplotly(
+  p,
+  tooltip = "text"
+)
 ```
 
 ## Library Compatibility
