@@ -360,20 +360,27 @@ plot_ly(
 #### Paired PC1 vs PC2
 ```{r paired-pca-pc1-pc2}
 paired_pca <- pca_data |>
-  mutate(timepoint = factor(timepoint, levels = c("baseline", "follow-up"))) |>
+  mutate(
+    timepoint = factor(timepoint, levels = c("baseline", "follow-up")),
+    hover_pc12 = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
+      "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2)
+    )
+  ) |>
   arrange(individual, timepoint)
+paired_segments_pc12 <- paired_pca |>
+  dplyr::select(individual, disease_state, timepoint, PC1, PC2) |>
+  pivot_wider(names_from = timepoint, values_from = c(PC1, PC2)) |>
+  dplyr::filter(!is.na(PC1_baseline), !is.na(`PC1_follow-up`), !is.na(PC2_baseline), !is.na(`PC2_follow-up`))
 p <- paired_pca |>
   ggplot(aes(x = PC1, y = PC2, color = disease_state)) +
   geom_segment(
-    data = paired_pca |>
-      dplyr::select(individual, disease_state, timepoint, PC1, PC2) |>
-      pivot_wider(names_from = timepoint, values_from = c(PC1, PC2)) |>
-      dplyr::filter(!is.na(PC1_baseline), !is.na(`PC1_follow-up`), !is.na(PC2_baseline), !is.na(`PC2_follow-up`)),
+    data = paired_segments_pc12,
     aes(x = PC1_baseline, y = PC2_baseline, xend = `PC1_follow-up`, yend = `PC2_follow-up`, color = disease_state),
     arrow = arrow(length = grid::unit(0.12, "inches"), type = "closed"),
     alpha = 0.45, linewidth = 0.5, inherit.aes = FALSE
   ) +
-  geom_point(aes(shape = timepoint), size = 2.5, alpha = 0.85) +
+  geom_point(aes(shape = timepoint, text = hover_pc12), size = 2.5, alpha = 0.85) +
   labs(
     x = paste0("PC1 (", round(variance_explained[1], 1), "%)"),
     y = paste0("PC2 (", round(variance_explained[2], 1), "%)"),
@@ -381,23 +388,31 @@ p <- paired_pca |>
     shape = "Timepoint"
   ) +
   theme(legend.position = "top")
-p
+ggplotly(p, tooltip = "text")
 ```
 
 #### Paired PC3 vs PC4
 ```{r paired-pca-pc3-pc4}
+paired_pca <- paired_pca |>
+  mutate(
+    hover_pc34 = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
+      "<br>PC3: ", round(PC3, 2), "<br>PC4: ", round(PC4, 2)
+    )
+  )
+paired_segments_pc34 <- paired_pca |>
+  dplyr::select(individual, disease_state, timepoint, PC3, PC4) |>
+  pivot_wider(names_from = timepoint, values_from = c(PC3, PC4)) |>
+  dplyr::filter(!is.na(PC3_baseline), !is.na(`PC3_follow-up`), !is.na(PC4_baseline), !is.na(`PC4_follow-up`))
 p <- paired_pca |>
   ggplot(aes(x = PC3, y = PC4, color = disease_state)) +
   geom_segment(
-    data = paired_pca |>
-      dplyr::select(individual, disease_state, timepoint, PC3, PC4) |>
-      pivot_wider(names_from = timepoint, values_from = c(PC3, PC4)) |>
-      dplyr::filter(!is.na(PC3_baseline), !is.na(`PC3_follow-up`), !is.na(PC4_baseline), !is.na(`PC4_follow-up`)),
+    data = paired_segments_pc34,
     aes(x = PC3_baseline, y = PC4_baseline, xend = `PC3_follow-up`, yend = `PC4_follow-up`, color = disease_state),
     arrow = arrow(length = grid::unit(0.12, "inches"), type = "closed"),
     alpha = 0.45, linewidth = 0.5, inherit.aes = FALSE
   ) +
-  geom_point(aes(shape = timepoint), size = 2.5, alpha = 0.85) +
+  geom_point(aes(shape = timepoint, text = hover_pc34), size = 2.5, alpha = 0.85) +
   labs(
     x = paste0("PC3 (", round(variance_explained[3], 1), "%)"),
     y = paste0("PC4 (", round(variance_explained[4], 1), "%)"),
@@ -405,7 +420,7 @@ p <- paired_pca |>
     shape = "Timepoint"
   ) +
   theme(legend.position = "top")
-p
+ggplotly(p, tooltip = "text")
 ```
 
 # Robust Outlier Detection
