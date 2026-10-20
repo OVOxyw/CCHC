@@ -43,23 +43,14 @@ fastp_qc <- map_dfr(
     tibble(
       run = basename(file) |>
         str_remove("\\.json$"),
-      raw_reads_total =
-        x$summary$before_filtering$total_reads,
-      trimmed_reads_total =
-        x$summary$after_filtering$total_reads,
-      retained_pct =
-        x$summary$after_filtering$total_reads /
-        x$summary$before_filtering$total_reads * 100,
-      q30_before =
-        x$summary$before_filtering$q30_rate * 100,
-      q30_after =
-        x$summary$after_filtering$q30_rate * 100,
-      gc_before =
-        x$summary$before_filtering$gc_content * 100,
-      gc_after =
-        x$summary$after_filtering$gc_content * 100,
-      duplication_pct =
-        x$duplication$rate * 100
+      raw_reads_total = x$summary$before_filtering$total_reads,
+      trimmed_reads_total = x$summary$after_filtering$total_reads,
+      retained_pct = x$summary$after_filtering$total_reads / x$summary$before_filtering$total_reads * 100,
+      q30_before = x$summary$before_filtering$q30_rate * 100,
+      q30_after = x$summary$after_filtering$q30_rate * 100,
+      gc_before = x$summary$before_filtering$gc_content * 100,
+      gc_after = x$summary$after_filtering$gc_content * 100,
+      duplication_pct = x$duplication$rate * 100
     )
   }
 )
@@ -82,29 +73,17 @@ salmon_qc <- map_dfr(
     lib <- fromJSON(lib_file)
     tibble(
       run = run,
-      salmon_processed_fragments =
-        meta$num_processed,
-      salmon_mapped_fragments =
-        meta$num_mapped,
-      mapping_rate =
-        meta$percent_mapped,
-      library_type =
-        meta$detected_library_type,
-      library_compatible_pct =
-        lib$compatible_fragment_ratio * 100,
-      fragment_length_mean =
-        meta$frag_length_mean,
-      fragment_length_sd =
-        meta$frag_length_sd,
-      decoy_fragments =
-        meta$num_decoy_fragments,
-      decoy_pct =
-        meta$num_decoy_fragments /
-        meta$num_processed * 100,
-      concordant_consistent_fragments =
-        lib$num_frags_with_concordant_consistent_mappings,
-      inconsistent_or_orphan_fragments =
-        lib$num_frags_with_inconsistent_or_orphan_mappings
+      salmon_processed_fragments = meta$num_processed,
+      salmon_mapped_fragments = meta$num_mapped,
+      mapping_rate = meta$percent_mapped,
+      library_type = meta$detected_library_type,
+      library_compatible_pct = lib$compatible_fragment_ratio * 100,
+      fragment_length_mean = meta$frag_length_mean,
+      fragment_length_sd = meta$frag_length_sd,
+      decoy_fragments = meta$num_decoy_fragments,
+      decoy_pct = meta$num_decoy_fragments / meta$num_processed * 100,
+      concordant_consistent_fragments = lib$num_frags_with_concordant_consistent_mappings,
+      inconsistent_or_orphan_fragments = lib$num_frags_with_inconsistent_or_orphan_mappings
     )
   }
 )
@@ -170,7 +149,7 @@ summarise_flagstat <- function(files, prefix) {
       ~ paste0(prefix, "_", .x),
       -run
     )
-
+    
   x
 }
 

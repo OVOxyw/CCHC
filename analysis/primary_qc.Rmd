@@ -1,5 +1,5 @@
 ---
-title: "Primary RNA-seq QC"
+title: "Primary RNA-seq QC and RUV analysis"
 date: "`r format(Sys.Date(), '%d %B, %Y')`"
 output:
   html_document:
@@ -22,6 +22,7 @@ library(DESeq2)
 library(tidyverse)
 library(reactable)
 library(plotly)
+library(RUVSeq)
 
 theme_set(theme_bw(base_size = 12))
 qc <- read_tsv("../output/qc/sample_qc_summary.tsv", show_col_types = FALSE) |>
@@ -481,97 +482,42 @@ reactable(
 
 # Outlier Association
 ## Biological / Sample Metadata {.tabset}
-## Age by PCA Outlier Status
+### Age by PCA Outlier Status
 ```{r age-by-outlier-status}
 age_outlier_data <- sample_outliers |>
   mutate(
-    outlier_binary = if_else(
-      outlier_status == "No",
-      "No",
-      "Flagged"
-    ),
-    outlier_binary = factor(
-      outlier_binary,
-      levels = c("No", "Flagged")
-    ),
+    outlier_binary = if_else(outlier_status == "No", "No", "Flagged"),
+    outlier_binary = factor(outlier_binary, levels = c("No", "Flagged")),
     hover = paste0(
-      "Run: ", run,
-      "<br>Individual: ", individual,
-      "<br>Age: ", age,
-      "<br>Sex: ", sex,
-      "<br>Group: ", disease_state,
-      "<br>Timepoint: ", timepoint,
-      "<br>Outlier status: ", outlier_status,
-      "<br>Max |robust Z|: ",
-      round(max_abs_robust_z, 2)
+      "Run: ", run, "<br>Individual: ", individual, "<br>Age: ", age, "<br>Sex: ", sex,
+      "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
+      "<br>Outlier status: ", outlier_status, "<br>Max |robust Z|: ", round(max_abs_robust_z, 2)
     )
   )
 
 p <- age_outlier_data |>
-  ggplot(
-    aes(
-      x = outlier_binary,
-      y = age,
-      color = outlier_binary
-    )
-  ) +
-  geom_boxplot(
-    outlier.shape = NA,
-    alpha = 0.6,
-    width = 0.55
-  ) +
-  geom_jitter(
-    aes(text = hover),
-    width = 0.12,
-    height = 0,
-    size = 2.2,
-    alpha = 0.75
-  ) +
-  labs(
-    x = "PCA outlier status",
-    y = "Age (years)",
-    color = "PCA outlier status"
-  ) +
-  theme(
-    legend.position = "none"
-  )
-ggplotly(
-  p,
-  tooltip = "text"
-)
+  ggplot(aes(x = outlier_binary, y = age, color = outlier_binary)) +
+  geom_boxplot(outlier.shape = NA, alpha = 0.6, width = 0.55) +
+  geom_jitter(aes(text = hover), width = 0.12, height = 0, size = 2.2, alpha = 0.75) +
+  labs(x = "PCA outlier status", y = "Age (years)", color = "PCA outlier status") +
+  theme(legend.position = "none")
+ggplotly(p, tooltip = "text")
 ```
 
 ### Sex and PCA Outlier Status
 ```{r sex-outlier-summary}
 sex_outlier_summary <- sample_outliers |>
-  mutate(
-    outlier_binary = if_else(
-      outlier_status == "No",
-      "No",
-      "Flagged"
-    )
-  ) |>
+  mutate(outlier_binary = if_else(outlier_status == "No", "No", "Flagged")) |>
   group_by(sex) |>
   summarise(
     Samples = n(),
     `Non-flagged` = sum(outlier_binary == "No"),
     Flagged = sum(outlier_binary == "Flagged"),
-    `Flagged (%)` = round(
-      mean(outlier_binary == "Flagged") * 100,
-      1
-    ),
+    `Flagged (%)` = round(mean(outlier_binary == "Flagged") * 100, 1),
     .groups = "drop"
   ) |>
-  rename(
-    Sex = sex
-  )
-reactable(
-  sex_outlier_summary,
-  pagination = FALSE,
-  bordered = TRUE,
-  striped = TRUE,
-  highlight = TRUE
-)
+  rename(Sex = sex)
+reactable(sex_outlier_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## Technical QC {.tabset}
@@ -663,6 +609,47 @@ reactable(
     FDR = colDef(name = "BH-adjusted p")
   )
 )
+```
+
+# Unwanted Variation Assessment
+## RUVSeq Setup
+```{r ruv-setup}
+ruv_counts <- counts(dds)
+ruv_pheno <- as.data.frame(sample_info)
+rownames(ruv_pheno) <- ruv_pheno$run
+ruv_set <- newSeqExpressionSet(as.matrix(ruv_counts), phenoData = ruv_pheno)
+ruv_set <- betweenLaneNormalization(ruv_set, which = "upper")
+```
+
+## First-pass DE
+```{r ruv-empirical-control-ranking}
+control_dds <- dds
+colData(control_dds)$individual <- factor(colData(control_dds)$individual)
+colData(control_dds)$timepoint <- relevel(factor(colData(control_dds)$timepoint), ref = "baseline")
+colData(control_dds)$disease_state <- relevel(factor(colData(control_dds)$disease_state), ref = "control")
+colData(control_dds)$case_followup <- as.integer(colData(control_dds)$disease_state != "control" & colData(control_dds)$timepoint == "follow-up")
+design(control_dds) <- ~ individual + timepoint + case_followup
+control_dds <- DESeq(control_dds, test = "LRT", reduced = ~ individual)
+control_results <- results(control_dds)
+control_ranking <- as.data.frame(control_results) |>
+  rownames_to_column("gene_id") |>
+  filter(!is.na(pvalue)) |>
+  arrange(desc(pvalue))
+```
+```{r ruv-control-candidates}
+control_candidate_summary <- tibble(
+  criterion = c(
+    "p > 0.5",
+    "p > 0.8",
+    "p > 0.9"
+  ),
+  genes = c(
+    sum(control_ranking$pvalue > 0.5),
+    sum(control_ranking$pvalue > 0.8),
+    sum(control_ranking$pvalue > 0.9)
+  )
+)
+control_candidate_summary
 ```
 
 # Session Information
