@@ -618,7 +618,33 @@ ruv_counts <- counts(dds)
 ruv_pheno <- as.data.frame(sample_info)
 rownames(ruv_pheno) <- ruv_pheno$run
 ruv_set <- newSeqExpressionSet(as.matrix(ruv_counts), phenoData = ruv_pheno)
+ruv_timepoint <- factor(ruv_pheno$timepoint, levels = c("baseline", "follow-up"))
+ruv_colors <- RColorBrewer::brewer.pal(3, "Set2")
+```
+
+## RLE Before Normalization
+```{r ruv-rle-before}
+plotRLE(ruv_set, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+```
+
+## PCA Before Normalization
+```{r ruv-pca-before}
+plotPCA(ruv_set, col = ruv_colors[ruv_timepoint], cex = 1.2)
+```
+
+## Upper-quartile Normalization
+```{r ruv-upper-quartile}
 ruv_set <- betweenLaneNormalization(ruv_set, which = "upper")
+```
+
+## RLE After Normalization
+```{r ruv-rle-after}
+plotRLE(ruv_set, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+```
+
+## PCA After Normalization
+```{r ruv-pca-after}
+plotPCA(ruv_set, col = ruv_colors[ruv_timepoint], cex = 1.2)
 ```
 
 ## First-pass DE
@@ -633,22 +659,15 @@ control_dds <- DESeq(control_dds, test = "LRT", reduced = ~ individual)
 control_results <- results(control_dds)
 control_ranking <- as.data.frame(control_results) |>
   rownames_to_column("gene_id") |>
-  filter(!is.na(pvalue)) |>
+  dplyr::filter(!is.na(pvalue)) |>
   arrange(desc(pvalue))
 ```
+
+## Empirical Control Candidates
 ```{r ruv-control-candidates}
 control_candidate_summary <- tibble(
-  criterion = c(
-    "p > 0.5",
-    "p > 0.8",
-    "p > 0.9"
-  ),
-  genes = c(
-    sum(control_ranking$pvalue > 0.5),
-    sum(control_ranking$pvalue > 0.8),
-    sum(control_ranking$pvalue > 0.9)
-  )
-)
+  criterion = c("p > 0.5", "p > 0.8", "p > 0.9"),
+  genes = c(sum(control_ranking$pvalue > 0.5), sum(control_ranking$pvalue > 0.8), sum(control_ranking$pvalue > 0.9)))
 control_candidate_summary
 ```
 
