@@ -684,8 +684,8 @@ ruv_fits <- setNames(
 )
 ```
 
-## PCA Across RUVg k Values
-```{r ruvg-pca-comparison, fig.width=12, fig.height=18}
+## PCA Across RUVg k Values {.tabset}
+```{r ruvg-pca-comparison, results = "asis"}
 ruv_pca_data <- purrr::map_dfr(ruv_k_values, function(k) {
   ruv_fit <- ruv_fits[[paste0("k", k)]]
   pca_k <- prcomp(t(ruv_fit$normalizedCounts), center = TRUE, scale. = FALSE)
@@ -694,27 +694,31 @@ ruv_pca_data <- purrr::map_dfr(ruv_k_values, function(k) {
     rownames_to_column("run") |>
     left_join(sample_info, by = "run") |>
     left_join(sample_outliers |> dplyr::select(run, outlier_status), by = "run") |>
-    mutate(
-      k = k,
-      k_label = paste0("k = ", k, " | PC1 ", round(variance_k[1], 1), "%", " | PC2 ", round(variance_k[2], 1), "%")
-    )
-})
-ruv_pca_data <- ruv_pca_data |>
+    mutate(k = k, pc1_variance = variance_k[1], pc2_variance = variance_k[2])
+}) |>
   mutate(
-    k = factor(k, levels = ruv_k_values),
-    k_label = factor(k_label, levels = unique(k_label))
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
+      "<br>Original outlier status: ", outlier_status, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2)
+    )
   )
-ggplot(ruv_pca_data, aes(x = PC1, y = PC2, color = timepoint, shape = outlier_status)) +
-  geom_point(size = 2, alpha = 0.8) +
-  geom_text(
-    data = ruv_pca_data |> dplyr::filter(outlier_status != "No"),
-    aes(label = run),
-    size = 2, vjust = -0.6, check_overlap = TRUE, show.legend = FALSE
-  ) +
-  facet_wrap(~ k_label, ncol = 2, scales = "free") +
-  labs(x = "PC1", y = "PC2", color = "Timepoint", shape = "Original PCA outlier status") +
-  theme_bw(base_size = 11) +
-  theme(strip.text = element_text(face = "bold"), legend.position = "top")
+for (k_value in ruv_k_values) {
+  ruv_pca_k <- dplyr::filter(ruv_pca_data, k == k_value)
+  cat("\n\n### k =", k_value, "\n\n")
+  plot_ly(
+    data = ruv_pca_k, x = ~PC1, y = ~PC2, type = "scatter", mode = "markers",
+    color = ~timepoint, symbol = ~outlier_status,
+    text = ~hover, hoverinfo = "text"
+  ) |>
+    layout(
+      hovermode = "closest",
+      legend = list(title = list(text = "Timepoint / original outlier status")),
+      xaxis = list(title = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)")),
+      yaxis = list(title = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"))
+    ) |>
+    htmltools::tagList() |>
+    print()
+}
 ```
 
 ## RUV Factor Summary
