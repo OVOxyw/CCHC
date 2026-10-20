@@ -663,14 +663,37 @@ control_ranking <- as.data.frame(control_results) |>
   arrange(desc(pvalue))
 ```
 
-## Empirical Control Candidates
-```{r ruv-control-candidates}
-control_candidate_summary <- tibble(
-  criterion = c("p > 0.5", "p > 0.8", "p > 0.9"),
-  genes = c(sum(control_ranking$pvalue > 0.5), sum(control_ranking$pvalue > 0.8), sum(control_ranking$pvalue > 0.9)))
-control_candidate_summary
+## Empirical Control Genes
+```{r ruv-empirical-controls}
+control_ranking <- as.data.frame(control_results) |>
+  rownames_to_column("gene_id") |>
+  dplyr::filter(!is.na(pvalue)) |>
+  arrange(pvalue)
+top_de_genes <- control_ranking |>
+  slice_head(n = 5000) |>
+  pull(gene_id)
+empirical_controls <- rownames(ruv_set)[
+  !(rownames(ruv_set) %in% top_de_genes)
+]
+tibble(Metric = c("Genes ranked in first-pass DE", "Most significant genes excluded", "Empirical control genes"),
+  Value = c(nrow(control_ranking), length(top_de_genes), length(empirical_controls)))
 ```
 
+## RUVg
+```{r ruvg-k1}
+ruv_set_k1 <- RUVg(ruv_set, empirical_controls, k = 1)
+pData(ruv_set_k1)
+```
+
+## RLE After RUVg
+```{r ruvg-rle}
+plotRLE(ruv_set_k1, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+```
+
+## PCA After RUVg
+```{r ruvg-pca}
+plotPCA(ruv_set_k1, col = ruv_colors[ruv_timepoint], cex = 1.2)
+```
 # Session Information
 ```{r session-info}
 sessionInfo()
