@@ -15,7 +15,6 @@ knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 10, fig.heig
 
 ```{r packages-and-settings}
 options(bitmapType = "cairo")
-
 library(tximport)
 library(rtracklayer)
 library(DESeq2)
@@ -23,7 +22,6 @@ library(tidyverse)
 library(reactable)
 library(plotly)
 library(RUVSeq)
-
 theme_set(theme_bw(base_size = 12))
 qc <- read_tsv("../output/qc/sample_qc_summary.tsv", show_col_types = FALSE) |>
   mutate(
@@ -494,7 +492,6 @@ age_outlier_data <- sample_outliers |>
       "<br>Outlier status: ", outlier_status, "<br>Max |robust Z|: ", round(max_abs_robust_z, 2)
     )
   )
-
 p <- age_outlier_data |>
   ggplot(aes(x = outlier_binary, y = age, color = outlier_binary)) +
   geom_boxplot(outlier.shape = NA, alpha = 0.6, width = 0.55) +
@@ -612,88 +609,123 @@ reactable(
 ```
 
 # Unwanted Variation Assessment
-## RUVSeq Setup
+## RUV Setup
 ```{r ruv-setup}
-ruv_counts <- counts(dds)
+ruv_counts <- gene_counts[keep, , drop = FALSE]
 ruv_pheno <- as.data.frame(sample_info)
 rownames(ruv_pheno) <- ruv_pheno$run
-ruv_set <- newSeqExpressionSet(as.matrix(ruv_counts), phenoData = ruv_pheno)
-ruv_timepoint <- factor(ruv_pheno$timepoint, levels = c("baseline", "follow-up"))
+stopifnot(identical(colnames(ruv_counts), rownames(ruv_pheno)))
+ruv_pheno$individual <- factor(ruv_pheno$individual)
+ruv_pheno$timepoint <- relevel(factor(ruv_pheno$timepoint), ref = "baseline")
+ruv_pheno$disease_state <- relevel(factor(ruv_pheno$disease_state), ref = "control")
+ruv_pheno$case_followup <- as.integer(ruv_pheno$disease_state != "control" & ruv_pheno$timepoint == "follow-up")
+ruv_timepoint <- ruv_pheno$timepoint
 ruv_colors <- RColorBrewer::brewer.pal(3, "Set2")
 ```
 
-## RLE Before Normalization
+## RLE Before TMM Normalization
 ```{r ruv-rle-before}
-plotRLE(ruv_set, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+plotRLE(ruv_counts, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
 ```
 
-## PCA Before Normalization
+## PCA Before TMM Normalization
 ```{r ruv-pca-before}
-plotPCA(ruv_set, col = ruv_colors[ruv_timepoint], cex = 1.2)
+plotPCA(ruv_counts, col = ruv_colors[ruv_timepoint], cex = 1.2)
 ```
 
-## Upper-quartile Normalization
-```{r ruv-upper-quartile}
-ruv_set <- betweenLaneNormalization(ruv_set, which = "upper")
+## TMM Normalization
+```{r ruv-tmm}
+ruv_y <- DGEList(counts = ruv_counts)
+ruv_y <- normLibSizes(ruv_y, method = "TMM")
+ruv_tmm_cpm <- cpm(ruv_y, log = FALSE, normalized.lib.sizes = TRUE)
+ruv_tmm_logcpm <- cpm(ruv_y, log = TRUE, prior.count = 1, normalized.lib.sizes = TRUE)
 ```
 
-## RLE After Normalization
-```{r ruv-rle-after}
-plotRLE(ruv_set, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+## RLE After TMM Normalization
+```{r ruv-rle-after-tmm}
+plotRLE(ruv_tmm_cpm, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
 ```
 
-## PCA After Normalization
-```{r ruv-pca-after}
-plotPCA(ruv_set, col = ruv_colors[ruv_timepoint], cex = 1.2)
+## PCA After TMM Normalization
+```{r ruv-pca-after-tmm}
+plotPCA(ruv_tmm_logcpm, isLog = TRUE, col = ruv_colors[ruv_timepoint], cex = 1.2)
 ```
 
-## First-pass DE
+## First-pass edgeR Analysis
 ```{r ruv-empirical-control-ranking}
-control_dds <- dds
-colData(control_dds)$individual <- factor(colData(control_dds)$individual)
-colData(control_dds)$timepoint <- relevel(factor(colData(control_dds)$timepoint), ref = "baseline")
-colData(control_dds)$disease_state <- relevel(factor(colData(control_dds)$disease_state), ref = "control")
-colData(control_dds)$case_followup <- as.integer(colData(control_dds)$disease_state != "control" & colData(control_dds)$timepoint == "follow-up")
-design(control_dds) <- ~ individual + timepoint + case_followup
-control_dds <- DESeq(control_dds, test = "LRT", reduced = ~ individual)
-control_results <- results(control_dds)
-control_ranking <- as.data.frame(control_results) |>
-  rownames_to_column("gene_id") |>
-  dplyr::filter(!is.na(pvalue)) |>
-  arrange(desc(pvalue))
+control_design <- model.matrix(~ individual + timepoint + case_followup, data = ruv_pheno)
+control_fit <- glmQLFit(ruv_y, design = control_design, legacy = FALSE)
+control_test_coef <- grep("^(timepoint|case_followup)", colnames(control_design))
+stopifnot(length(control_test_coef) == 2)
+control_test <- glmQLFTest(control_fit, coef = control_test_coef)
+control_ranking <- topTags(control_test, n = Inf, sort.by = "PValue")$table |>
+  as.data.frame() |>
+  rownames_to_column("gene_id")
 ```
 
 ## Empirical Control Genes
 ```{r ruv-empirical-controls}
-control_ranking <- as.data.frame(control_results) |>
-  rownames_to_column("gene_id") |>
-  dplyr::filter(!is.na(pvalue)) |>
-  arrange(pvalue)
 top_de_genes <- control_ranking |>
   slice_head(n = 5000) |>
   pull(gene_id)
-empirical_controls <- rownames(ruv_set)[
-  !(rownames(ruv_set) %in% top_de_genes)
-]
-tibble(Metric = c("Genes ranked in first-pass DE", "Most significant genes excluded", "Empirical control genes"),
-  Value = c(nrow(control_ranking), length(top_de_genes), length(empirical_controls)))
+empirical_controls <- setdiff(rownames(ruv_counts), top_de_genes)
+tibble(
+  Metric = c("Genes ranked in first-pass analysis", "Most significant genes excluded", "Empirical control genes"),
+  Value = c(nrow(control_ranking), length(top_de_genes), length(empirical_controls))
+)
 ```
 
-## RUVg
-```{r ruvg-k1}
-ruv_set_k1 <- RUVg(ruv_set, empirical_controls, k = 1)
-pData(ruv_set_k1)
+## RUVg Across k = 1 to 10
+```{r ruvg-k-sensitivity}
+ruv_k_values <- 1:10
+ruv_fits <- setNames(
+  lapply(ruv_k_values, function(k) RUVg(ruv_tmm_logcpm, empirical_controls, k = k, isLog = TRUE, round = FALSE)),
+  paste0("k", ruv_k_values)
+)
 ```
 
-## RLE After RUVg
-```{r ruvg-rle}
-plotRLE(ruv_set_k1, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+## PCA Across RUVg k Values
+```{r ruvg-pca-comparison, fig.width=12, fig.height=18}
+ruv_pca_data <- purrr::map_dfr(ruv_k_values, function(k) {
+  ruv_fit <- ruv_fits[[paste0("k", k)]]
+  pca_k <- prcomp(t(ruv_fit$normalizedCounts), center = TRUE, scale. = FALSE)
+  variance_k <- (pca_k$sdev^2 / sum(pca_k$sdev^2)) * 100
+  as.data.frame(pca_k$x[, 1:2, drop = FALSE]) |>
+    rownames_to_column("run") |>
+    left_join(sample_info, by = "run") |>
+    left_join(sample_outliers |> dplyr::select(run, outlier_status), by = "run") |>
+    mutate(
+      k = k,
+      k_label = paste0("k = ", k, " | PC1 ", round(variance_k[1], 1), "%", " | PC2 ", round(variance_k[2], 1), "%")
+    )
+})
+ruv_pca_data <- ruv_pca_data |>
+  mutate(
+    k = factor(k, levels = ruv_k_values),
+    k_label = factor(k_label, levels = unique(k_label))
+  )
+ggplot(ruv_pca_data, aes(x = PC1, y = PC2, color = timepoint, shape = outlier_status)) +
+  geom_point(size = 2, alpha = 0.8) +
+  geom_text(
+    data = ruv_pca_data |> dplyr::filter(outlier_status != "No"),
+    aes(label = run),
+    size = 2, vjust = -0.6, check_overlap = TRUE, show.legend = FALSE
+  ) +
+  facet_wrap(~ k_label, ncol = 2, scales = "free") +
+  labs(x = "PC1", y = "PC2", color = "Timepoint", shape = "Original PCA outlier status") +
+  theme_bw(base_size = 11) +
+  theme(strip.text = element_text(face = "bold"), legend.position = "top")
 ```
 
-## PCA After RUVg
-```{r ruvg-pca}
-plotPCA(ruv_set_k1, col = ruv_colors[ruv_timepoint], cex = 1.2)
+## RUV Factor Summary
+```{r ruv-factor-summary}
+ruv_factor_summary <- purrr::map_dfr(ruv_k_values, function(k) {
+  ruv_fit <- ruv_fits[[paste0("k", k)]]
+  tibble(k = k, samples = nrow(ruv_fit$W), unwanted_factors = ncol(ruv_fit$W))
+})
+reactable(ruv_factor_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
+
 # Session Information
 ```{r session-info}
 sessionInfo()
