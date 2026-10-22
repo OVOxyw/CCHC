@@ -836,53 +836,6 @@ for (k_value in ruv_k_values) {
 }
 ```
 
-## RLE Across RUVg k Values {.tabset}
-RLE distributions were recalculated from each RUVg-adjusted expression matrix to provide a complementary sample-level diagnostic across values of `k`.
-Each box represents the relative log-expression distribution of one sample. Sample medians are expected to remain close to zero, while unusually shifted or broad distributions may indicate residual sample-level variation. RLE is interpreted together with PCA and is not used alone to select the final value of `k`.
-```{r ruvg-rle-comparison, results = "asis"}
-ruv_rle_summary <- purrr::map_dfr(ruv_k_values, function(k) {
-  ruv_matrix <- ruv_fits[[paste0("k", k)]]$normalizedCounts
-  rle_matrix <- sweep(ruv_matrix, 1, apply(ruv_matrix, 1, median, na.rm = TRUE), FUN = "-")
-  purrr::map_dfr(seq_len(ncol(rle_matrix)), function(i) {
-    box_stats <- boxplot.stats(rle_matrix[, i], coef = 1.5, do.out = FALSE)$stats
-    tibble(
-      k = k, run = colnames(rle_matrix)[i],
-      ymin = box_stats[1], lower = box_stats[2], middle = box_stats[3], upper = box_stats[4], ymax = box_stats[5]
-    )
-  })
-}) |>
-  left_join(sample_info, by = "run") |>
-  left_join(sample_outliers |> dplyr::select(run, outlier_status, flagged_pc, max_abs_robust_z), by = "run") |>
-  mutate(
-    sample_order = match(run, sample_info$run),
-    hover = paste0(
-      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
-      "<br>Original outlier status: ", outlier_status, "<br>Flagged PC: ", if_else(flagged_pc == "", "None", flagged_pc),
-      "<br>Max |robust Z|: ", round(max_abs_robust_z, 2), "<br>k: ", k, "<br>RLE median: ", round(middle, 3), "<br>RLE IQR: ", round(upper - lower, 3)
-    )
-  )
-rle_limit <- max(abs(c(ruv_rle_summary$ymin, ruv_rle_summary$ymax)), na.rm = TRUE)
-for (k_value in ruv_k_values) {
-  ruv_rle_k <- ruv_rle_summary |>
-    dplyr::filter(k == k_value) |>
-    arrange(sample_order) |>
-    mutate(run = factor(run, levels = run))
-  cat("\n\n### k =", k_value, "\n\n")
-  p <- ruv_rle_k |>
-    ggplot(aes(x = run, group = run, ymin = ymin, lower = lower, middle = middle, upper = upper, ymax = ymax, fill = timepoint, text = hover)) +
-    geom_boxplot(stat = "identity", width = 0.75, alpha = 0.8) +
-    geom_hline(yintercept = 0, linetype = 2) +
-    coord_cartesian(ylim = c(-rle_limit, rle_limit)) +
-    scale_fill_manual(values = timepoint_colors) +
-    labs(x = "Samples", y = "Relative log expression", fill = "Timepoint") +
-    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
-  ggplotly(p, tooltip = "text", height = 520) |>
-    format_plotly() |>
-    htmltools::tagList() |>
-    print()
-}
-```
-
 # Analysis Notes
 No samples have been excluded on the basis of the current PCA, robust outlier, or RUV analyses.
 Samples flagged during the exploratory PCA assessment remain in the dataset while their technical and biological characteristics are investigated. RUVg is being used to assess whether latent unwanted variation can explain part of the observed sample structure.
