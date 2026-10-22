@@ -869,7 +869,7 @@ for (k_value in ruv_k_values) {
     mutate(run = factor(run, levels = run))
   cat("\n\n### k =", k_value, "\n\n")
   p <- ruv_rle_k |>
-    ggplot(aes(x = run, ymin = ymin, lower = lower, middle = middle, upper = upper, ymax = ymax, fill = timepoint, text = hover)) +
+    ggplot(aes(x = run, group = run, ymin = ymin, lower = lower, middle = middle, upper = upper, ymax = ymax, fill = timepoint, text = hover)) +
     geom_boxplot(stat = "identity", width = 0.75, alpha = 0.8) +
     geom_hline(yintercept = 0, linetype = 2) +
     coord_cartesian(ylim = c(-rle_limit, rle_limit)) +
@@ -881,21 +881,6 @@ for (k_value in ruv_k_values) {
     htmltools::tagList() |>
     print()
 }
-```
-
-## RUV Factor Summary
-This table confirms the number of latent unwanted factors estimated for each RUVg model. For example, `k = 3` corresponds to three estimated unwanted factors (`W1-W3`) across the full sample set.
-```{r ruv-factor-summary}
-ruv_factor_summary <- purrr::map_dfr(ruv_k_values, function(k) {
-  ruv_fit <- ruv_fits[[paste0("k", k)]]
-  tibble(k = k, samples = nrow(ruv_fit$W), unwanted_factors = ncol(ruv_fit$W))
-})
-reactable(ruv_factor_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE,
-  columns = list(
-    k = colDef(name = "k"),
-    samples = colDef(name = "Samples"),
-    unwanted_factors = colDef(name = "Unwanted factors")
-  ))
 ```
 
 # Analysis Notes
