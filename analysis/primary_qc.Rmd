@@ -22,7 +22,33 @@ library(tidyverse)
 library(reactable)
 library(plotly)
 library(RUVSeq)
-theme_set(theme_bw(base_size = 12))
+library(edgeR)
+disease_colors <- c("control" = "#0072B2", "T2D case" = "#D55E00")
+timepoint_colors <- c("baseline" = "#009E73", "follow-up" = "#CC79A7")
+outlier_colors <- c("No" = "#7A7A7A", "Potential" = "#E69F00", "Unambiguous" = "#D55E00")
+outlier_binary_colors <- c("No" = "#7A7A7A", "Flagged" = "#D55E00")
+timepoint_shapes <- c("baseline" = 16, "follow-up" = 17)
+outlier_shapes <- c("No" = 16, "Potential" = 17, "Unambiguous" = 15)
+cchc_theme <- function() {
+  theme_bw(base_size = 12) +
+    theme(
+      plot.title = element_text(face = "bold"),
+      axis.title = element_text(face = "bold"),
+      strip.text = element_text(face = "bold"),
+      legend.position = "top",
+      panel.grid.minor = element_blank()
+    )
+}
+theme_set(cchc_theme())
+format_plotly <- function(p) {
+  p |>
+    layout(
+      hovermode = "closest",
+      font = list(size = 12),
+      margin = list(l = 70, r = 40, b = 60, t = 40)
+    ) |>
+    config(displaylogo = FALSE, responsive = TRUE)
+}
 qc <- read_tsv("../output/qc/sample_qc_summary.tsv", show_col_types = FALSE) |>
   mutate(
     library_size_input_million = salmon_processed_fragments / 1e6,
@@ -33,21 +59,24 @@ qc <- read_tsv("../output/qc/sample_qc_summary.tsv", show_col_types = FALSE) |>
 ```
 
 # Data Summary
+This section summarises the samples included in this analysis, including the number of individuals, longitudinal timepoints, and disease groups. Each individual contributes paired baseline and follow-up samples.
 ```{r data-summary}
 tibble(
   Metric = c("Samples", "Individuals", "Baseline samples", "Follow-up samples"),
   Value = c(nrow(qc), n_distinct(qc$individual), sum(qc$timepoint == "baseline"), sum(qc$timepoint == "follow-up"))
 ) |>
-  reactable(pagination = FALSE, bordered = TRUE, highlight = TRUE)
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
+The table below shows the distribution of samples across disease state and timepoint.
 ```{r group-summary}
 qc |>
   dplyr::count(disease_state, timepoint, name = "Samples") |>
-  reactable(pagination = FALSE, bordered = TRUE, highlight = TRUE)
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## Sample QC Table
+This table combines the main sample-level QC metrics used throughout the report. It includes library size, mapping performance, library compatibility, fragment characteristics, and whole-blood RNA composition.
 ```{r sample-qc-table}
 sample_qc <- qc |>
   transmute(
@@ -68,9 +97,15 @@ reactable(
   searchable = TRUE, sortable = TRUE, resizable = TRUE, filterable = TRUE,
   showPageSizeOptions = TRUE, defaultPageSize = 10, striped = TRUE, highlight = TRUE,
   columns = list(
+    run = colDef(name = "Run"),
+    sample = colDef(name = "Sample"),
+    individual = colDef(name = "Individual"),
+    disease_state = colDef(name = "Disease state"),
+    timepoint = colDef(name = "Timepoint"),
     library_size_input_million = colDef(name = "Input (M fragments)"),
     library_size_output_million = colDef(name = "Mapped (M fragments)"),
     mapping_rate = colDef(name = "Mapping (%)"),
+    library_type = colDef(name = "Library type"),
     library_compatible_pct = colDef(name = "Compatible (%)"),
     decoy_pct = colDef(name = "Decoy (%)"),
     fragment_length_mean = colDef(name = "Fragment mean"),
@@ -82,28 +117,36 @@ reactable(
 ```
 
 ## Salmon Library Type
+This table summarises the Salmon-inferred library type across all samples. Consistent library-type inference helps confirm that the sequencing libraries show similar strand-orientation characteristics across the dataset.
 ```{r library-type}
 qc |>
   dplyr::count(library_type, name = "Samples") |>
-  reactable(pagination = FALSE, bordered = TRUE)
+  reactable(
+    pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE,
+    columns = list(library_type = colDef(name = "Library type"))
+  )
 ```
 
 # Salmon QC {.tabset}
+This section reviews sample-level technical metrics derived from Salmon quantification.
 ## Mapping Rate
+Mapping rate represents the proportion of processed fragments successfully mapped during Salmon quantification. Samples with relatively low mapping rates are reviewed together with library size, library compatibility, decoy alignment, and RNA composition.
 ```{r mapping-rate}
 p <- qc |>
   arrange(mapping_rate) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>Mapping: ", round(mapping_rate, 2), "%")
+    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Mapping rate: ", round(mapping_rate, 2), "%")
   ) |>
-  ggplot(aes(sample_order, mapping_rate, text = hover)) +
-  geom_point() +
-  labs(x = "Samples ordered by mapping rate", y = "Salmon mapping rate (%)")
-ggplotly(p, tooltip = "text")
+  ggplot(aes(x = sample_order, y = mapping_rate, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "Samples ordered by mapping rate", y = "Salmon mapping rate (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Library Size
+Library size was examined at two stages. Input library size represents the number of fragments processed by Salmon, while output library size represents the number of fragments successfully mapped. Comparing these values helps identify samples with unusually low sequencing depth or substantial loss of fragments during mapping.
 ```{r library-size}
 library_size_plot <- qc |>
   arrange(library_size_input_million) |>
@@ -118,13 +161,12 @@ library_size_plot <- qc |>
     )
   )
 p <- library_size_plot |>
-  ggplot(aes(x = sample_order, y = library_size_million, color = library_stage, text = hover)) +
-  geom_line(aes(group = interaction(run, library_stage)), alpha = 0) +
-  geom_point(size = 2, alpha = 0.8) +
+  ggplot(aes(x = sample_order, y = library_size_million, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
   facet_wrap(~ library_stage, ncol = 1, scales = "free_y") +
-  labs(x = "Samples ordered by input library size", y = "Library size (million fragments)", color = "Library stage") +
-  theme(legend.position = "none", strip.text = element_text(face = "bold"))
-ggplotly(p, tooltip = "text")
+  labs(x = "Samples ordered by input library size", y = "Library size (million fragments)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### Input vs Output
@@ -140,14 +182,15 @@ p <- qc |>
   ) |>
   ggplot(aes(x = library_size_input_million, y = library_size_output_million, color = disease_state, shape = timepoint, text = hover)) +
   geom_point(size = 2.5, alpha = 0.8) +
+  scale_color_manual(values = disease_colors) +
+  scale_shape_manual(values = timepoint_shapes) +
   labs(
     x = "Input library size (million processed fragments)",
     y = "Output library size (million mapped fragments)",
     color = "Disease state",
     shape = "Timepoint"
-  ) +
-  theme(legend.position = "top")
-ggplotly(p, tooltip = "text")
+  )
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Library Compatibility
@@ -156,12 +199,13 @@ p <- qc |>
   arrange(library_compatible_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>Compatible: ", round(library_compatible_pct, 2), "%")
+    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Compatible: ", round(library_compatible_pct, 2), "%")
   ) |>
-  ggplot(aes(sample_order, library_compatible_pct, text = hover)) +
-  geom_point() +
-  labs(x = "Samples ordered by compatibility", y = "Library-compatible fragments (%)")
-ggplotly(p, tooltip = "text")
+  ggplot(aes(x = sample_order, y = library_compatible_pct, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "Samples ordered by compatibility", y = "Library-compatible fragments (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Decoy Alignment
@@ -170,12 +214,13 @@ p <- qc |>
   arrange(decoy_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>Decoy: ", round(decoy_pct, 2), "%")
+    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Decoy: ", round(decoy_pct, 2), "%")
   ) |>
-  ggplot(aes(sample_order, decoy_pct, text = hover)) +
-  geom_point() +
-  labs(x = "Samples ordered by decoy proportion", y = "Decoy fragments (%)")
-ggplotly(p, tooltip = "text")
+  ggplot(aes(x = sample_order, y = decoy_pct, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "Samples ordered by decoy proportion", y = "Decoy fragments (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Fragment Length
@@ -184,12 +229,13 @@ p <- qc |>
   arrange(fragment_length_mean) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>Mean fragment length: ", round(fragment_length_mean, 2), " bp")
+    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Mean fragment length: ", round(fragment_length_mean, 2), " bp")
   ) |>
-  ggplot(aes(sample_order, fragment_length_mean, text = hover)) +
-  geom_point() +
-  labs(x = "Samples ordered by fragment length", y = "Mean fragment length (bp)")
-ggplotly(p, tooltip = "text")
+  ggplot(aes(x = sample_order, y = fragment_length_mean, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "Samples ordered by fragment length", y = "Mean fragment length (bp)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 # Whole-blood QC {.tabset}
@@ -199,22 +245,24 @@ p <- qc |>
   arrange(rrna_mean_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>rRNA: ", round(rrna_mean_pct, 2), "%")
+    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>rRNA: ", round(rrna_mean_pct, 2), "%")
   ) |>
-  ggplot(aes(sample_order, rrna_mean_pct, text = hover)) +
-  geom_point() +
-  labs(x = "Samples ordered by rRNA content", y = "Mean rRNA mapping (%)")
-ggplotly(p, tooltip = "text")
+  ggplot(aes(x = sample_order, y = rrna_mean_pct, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "Samples ordered by rRNA content", y = "Mean rRNA mapping (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ```{r rrna-r1-r2}
 p <- qc |>
-  mutate(hover = paste0("Run: ", run, "<br>R1: ", round(rrna_r1_pct, 2), "%", "<br>R2: ", round(rrna_r2_pct, 2), "%")) |>
-  ggplot(aes(rrna_r1_pct, rrna_r2_pct, text = hover)) +
-  geom_point() +
+  mutate(hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>R1: ", round(rrna_r1_pct, 2), "%", "<br>R2: ", round(rrna_r2_pct, 2), "%")) |>
+  ggplot(aes(x = rrna_r1_pct, y = rrna_r2_pct, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
   geom_abline(slope = 1, intercept = 0, linetype = 2) +
-  labs(x = "rRNA R1 (%)", y = "rRNA R2 (%)")
-ggplotly(p, tooltip = "text")
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "rRNA R1 (%)", y = "rRNA R2 (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## HbRNA
@@ -223,22 +271,24 @@ p <- qc |>
   arrange(hbrna_mean_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>HbRNA: ", round(hbrna_mean_pct, 2), "%")
+    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>HbRNA: ", round(hbrna_mean_pct, 2), "%")
   ) |>
-  ggplot(aes(sample_order, hbrna_mean_pct, text = hover)) +
-  geom_point() +
-  labs(x = "Samples ordered by HbRNA content", y = "Mean HbRNA mapping (%)")
-ggplotly(p, tooltip = "text")
+  ggplot(aes(x = sample_order, y = hbrna_mean_pct, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "Samples ordered by HbRNA content", y = "Mean HbRNA mapping (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ```{r hbrna-r1-r2}
 p <- qc |>
-  mutate(hover = paste0("Run: ", run, "<br>R1: ", round(hbrna_r1_pct, 2), "%", "<br>R2: ", round(hbrna_r2_pct, 2), "%")) |>
-  ggplot(aes(hbrna_r1_pct, hbrna_r2_pct, text = hover)) +
-  geom_point() +
+  mutate(hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>R1: ", round(hbrna_r1_pct, 2), "%", "<br>R2: ", round(hbrna_r2_pct, 2), "%")) |>
+  ggplot(aes(x = hbrna_r1_pct, y = hbrna_r2_pct, color = timepoint, text = hover)) +
+  geom_point(size = 2.4, alpha = 0.8) +
   geom_abline(slope = 1, intercept = 0, linetype = 2) +
-  labs(x = "HbRNA R1 (%)", y = "HbRNA R2 (%)")
-ggplotly(p, tooltip = "text")
+  scale_color_manual(values = timepoint_colors) +
+  labs(x = "HbRNA R1 (%)", y = "HbRNA R2 (%)", color = "Timepoint")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 # QC Summary
@@ -284,7 +334,7 @@ tibble(
   Metric = c("Salmon quant files", "Imported samples", "Genes", "Samples missing age", "Samples missing sex"),
   Value = c(length(quant_files), ncol(gene_counts), nrow(gene_counts), sum(is.na(sample_info$age)), sum(is.na(sample_info$sex)))
 ) |>
-  reactable(pagination = FALSE, bordered = TRUE)
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## Variance-stabilised Expression
@@ -301,7 +351,7 @@ tibble(
   Metric = c("Genes before filtering", "Genes retained for PCA", "Samples"),
   Value = c(nrow(gene_counts), nrow(vst_matrix), ncol(vst_matrix))
 ) |>
-  reactable(pagination = FALSE, bordered = TRUE)
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## PCA
@@ -319,13 +369,14 @@ pca_data <- as.data.frame(pca$x[, 1:4, drop = FALSE]) |>
 ### PCA Diagnostics {.tabset}
 #### Variance Explained
 ```{r pca-variance}
+n_pc_shown <- min(10, length(variance_explained))
 pca_variance <- tibble(
-  PC = paste0("PC", seq_len(min(10, length(variance_explained)))),
-  Variance = variance_explained[seq_len(min(10, length(variance_explained)))]
-) |>
-  mutate(PC = factor(PC, levels = paste0("PC", seq_len(min(10, length(variance_explained))))))
+  PC = factor(paste0("PC", seq_len(n_pc_shown)), levels = paste0("PC", seq_len(n_pc_shown))),
+  Variance = variance_explained[seq_len(n_pc_shown)]
+)
 plot_ly(data = pca_variance, x = ~PC, y = ~Variance, type = "bar", text = ~paste0(PC, ": ", round(Variance, 2), "%"), hoverinfo = "text") |>
-  layout(xaxis = list(title = "Principal component"), yaxis = list(title = "Variance explained (%)"))
+  layout(xaxis = list(title = "Principal component"), yaxis = list(title = "Variance explained (%)")) |>
+  format_plotly()
 ```
 
 #### PC1 vs PC2
@@ -333,16 +384,16 @@ plot_ly(data = pca_variance, x = ~PC, y = ~Variance, type = "bar", text = ~paste
 plot_ly(data = pca_data, x = ~PC1, y = ~PC2) |>
   add_paths(data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5, hoverinfo = "none", showlegend = FALSE) |>
   add_markers(
-    color = ~disease_state, symbol = ~timepoint,
+    color = ~disease_state, colors = disease_colors, symbol = ~timepoint, symbols = timepoint_shapes,
     text = ~paste0(hover, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2)),
     hoverinfo = "text"
   ) |>
   layout(
-    hovermode = "closest",
     legend = list(title = list(text = "Group / timepoint")),
     xaxis = list(title = paste0("PC1 (", round(variance_explained[1], 1), "%)")),
     yaxis = list(title = paste0("PC2 (", round(variance_explained[2], 1), "%)"))
-  )
+  ) |>
+  format_plotly()
 ```
 
 #### PC3 vs PC4
@@ -350,16 +401,16 @@ plot_ly(data = pca_data, x = ~PC1, y = ~PC2) |>
 plot_ly(data = pca_data, x = ~PC3, y = ~PC4) |>
   add_paths(data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5, hoverinfo = "none", showlegend = FALSE) |>
   add_markers(
-    color = ~disease_state, symbol = ~timepoint,
+    color = ~disease_state, colors = disease_colors, symbol = ~timepoint, symbols = timepoint_shapes,
     text = ~paste0(hover, "<br>PC3: ", round(PC3, 2), "<br>PC4: ", round(PC4, 2)),
     hoverinfo = "text"
   ) |>
   layout(
-    hovermode = "closest",
     legend = list(title = list(text = "Group / timepoint")),
     xaxis = list(title = paste0("PC3 (", round(variance_explained[3], 1), "%)")),
     yaxis = list(title = paste0("PC4 (", round(variance_explained[4], 1), "%)"))
-  )
+  ) |>
+  format_plotly()
 ```
 
 # Robust Outlier Detection
@@ -393,16 +444,20 @@ robust_scores <- pca_data |>
 
 ## Robust Z-score Distribution
 ```{r robust-z-plot}
-plot_ly(data = robust_scores, x = ~PC, y = ~abs_robust_z, type = "scatter", mode = "markers", text = ~hover, hoverinfo = "text") |>
+plot_ly(
+  data = robust_scores, x = ~PC, y = ~abs_robust_z, type = "scatter", mode = "markers",
+  color = ~outlier_status, colors = outlier_colors,
+  text = ~hover, hoverinfo = "text"
+) |>
   layout(
-    hovermode = "closest",
     xaxis = list(title = "Principal component"),
     yaxis = list(title = "Absolute robust Z-score"),
     shapes = list(
       list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = potential_cutoff, y1 = potential_cutoff, line = list(dash = "dash")),
       list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = unambiguous_cutoff, y1 = unambiguous_cutoff, line = list(dash = "dot"))
     )
-  )
+  ) |>
+  format_plotly()
 ```
 
 ## Outlier Summary
@@ -496,9 +551,10 @@ p <- age_outlier_data |>
   ggplot(aes(x = outlier_binary, y = age, color = outlier_binary)) +
   geom_boxplot(outlier.shape = NA, alpha = 0.6, width = 0.55) +
   geom_jitter(aes(text = hover), width = 0.12, height = 0, size = 2.2, alpha = 0.75) +
+  scale_color_manual(values = outlier_binary_colors) +
   labs(x = "PCA outlier status", y = "Age (years)", color = "PCA outlier status") +
   theme(legend.position = "none")
-ggplotly(p, tooltip = "text")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### Sex and PCA Outlier Status
@@ -553,9 +609,9 @@ p <- qc_association_long |>
   geom_boxplot(outlier.shape = NA, alpha = 0.7) +
   geom_jitter(aes(text = hover), width = 0.15, height = 0, size = 2, alpha = 0.7) +
   facet_wrap(~ metric_label, scales = "free_y", ncol = 2) +
-  labs(x = "PCA outlier status", y = NULL, color = "PCA outlier status") +
-  theme(strip.text = element_text(face = "bold"), legend.position = "top")
-ggplotly(p, tooltip = "text")
+  scale_color_manual(values = outlier_binary_colors) +
+  labs(x = "PCA outlier status", y = NULL, color = "PCA outlier status")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### QC Metrics vs PCA Outlier Strength
@@ -566,9 +622,10 @@ p <- qc_association_long |>
   geom_hline(yintercept = potential_cutoff, linetype = 2) +
   geom_hline(yintercept = unambiguous_cutoff, linetype = 3) +
   facet_wrap(~ metric_label, scales = "free_x", ncol = 2) +
-  labs(x = "QC metric value", y = "Maximum absolute robust Z-score", color = "Outlier status", shape = "Outlier status") +
-  theme(strip.text = element_text(face = "bold"), legend.position = "top")
-ggplotly(p, tooltip = "text")
+  scale_color_manual(values = outlier_colors) +
+  scale_shape_manual(values = outlier_shapes) +
+  labs(x = "QC metric value", y = "Maximum absolute robust Z-score", color = "Outlier status", shape = "Outlier status")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### QC Association Summary
@@ -619,18 +676,17 @@ ruv_pheno$individual <- factor(ruv_pheno$individual)
 ruv_pheno$timepoint <- relevel(factor(ruv_pheno$timepoint), ref = "baseline")
 ruv_pheno$disease_state <- relevel(factor(ruv_pheno$disease_state), ref = "control")
 ruv_pheno$case_followup <- as.integer(ruv_pheno$disease_state != "control" & ruv_pheno$timepoint == "follow-up")
-ruv_timepoint <- ruv_pheno$timepoint
-ruv_colors <- RColorBrewer::brewer.pal(3, "Set2")
+ruv_sample_colors <- timepoint_colors[as.character(ruv_pheno$timepoint)]
 ```
 
 ## RLE Before TMM Normalization
 ```{r ruv-rle-before}
-plotRLE(ruv_counts, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+plotRLE(ruv_counts, outline = FALSE, ylim = c(-4, 4), col = ruv_sample_colors)
 ```
 
 ## PCA Before TMM Normalization
 ```{r ruv-pca-before}
-plotPCA(ruv_counts, col = ruv_colors[ruv_timepoint], cex = 1.2)
+plotPCA(ruv_counts, col = ruv_sample_colors, cex = 1.2)
 ```
 
 ## TMM Normalization
@@ -643,12 +699,12 @@ ruv_tmm_logcpm <- cpm(ruv_y, log = TRUE, prior.count = 1, normalized.lib.sizes =
 
 ## RLE After TMM Normalization
 ```{r ruv-rle-after-tmm}
-plotRLE(ruv_tmm_cpm, outline = FALSE, ylim = c(-4, 4), col = ruv_colors[ruv_timepoint])
+plotRLE(ruv_tmm_cpm, outline = FALSE, ylim = c(-4, 4), col = ruv_sample_colors)
 ```
 
 ## PCA After TMM Normalization
 ```{r ruv-pca-after-tmm}
-plotPCA(ruv_tmm_logcpm, isLog = TRUE, col = ruv_colors[ruv_timepoint], cex = 1.2)
+plotPCA(ruv_tmm_logcpm, isLog = TRUE, col = ruv_sample_colors, cex = 1.2)
 ```
 
 ## First-pass edgeR Analysis
@@ -672,7 +728,8 @@ empirical_controls <- setdiff(rownames(ruv_counts), top_de_genes)
 tibble(
   Metric = c("Genes ranked in first-pass analysis", "Most significant genes excluded", "Empirical control genes"),
   Value = c(nrow(control_ranking), length(top_de_genes), length(empirical_controls))
-)
+) |>
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## RUVg Across k = 1 to 10
@@ -707,15 +764,15 @@ for (k_value in ruv_k_values) {
   cat("\n\n### k =", k_value, "\n\n")
   plot_ly(
     data = ruv_pca_k, x = ~PC1, y = ~PC2, type = "scatter", mode = "markers",
-    color = ~timepoint, symbol = ~outlier_status,
+    color = ~timepoint, colors = timepoint_colors, symbol = ~outlier_status, symbols = outlier_shapes,
     text = ~hover, hoverinfo = "text"
   ) |>
     layout(
-      hovermode = "closest",
       legend = list(title = list(text = "Timepoint / original outlier status")),
       xaxis = list(title = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)")),
       yaxis = list(title = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"))
     ) |>
+    format_plotly() |>
     htmltools::tagList() |>
     print()
 }
@@ -728,6 +785,51 @@ ruv_factor_summary <- purrr::map_dfr(ruv_k_values, function(k) {
   tibble(k = k, samples = nrow(ruv_fit$W), unwanted_factors = ncol(ruv_fit$W))
 })
 reactable(ruv_factor_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
+```
+
+## RLE Across RUVg k Values {.tabset}
+```{r ruvg-rle-comparison, results = "asis"}
+ruv_rle_summary <- purrr::map_dfr(ruv_k_values, function(k) {
+  ruv_matrix <- ruv_fits[[paste0("k", k)]]$normalizedCounts
+  rle_matrix <- sweep(ruv_matrix, 1, apply(ruv_matrix, 1, median, na.rm = TRUE), FUN = "-")
+  purrr::map_dfr(seq_len(ncol(rle_matrix)), function(i) {
+    box_stats <- boxplot.stats(rle_matrix[, i], coef = 1.5, do.out = FALSE)$stats
+    tibble(
+      k = k, run = colnames(rle_matrix)[i],
+      ymin = box_stats[1], lower = box_stats[2], middle = box_stats[3], upper = box_stats[4], ymax = box_stats[5]
+    )
+  })
+}) |>
+  left_join(sample_info, by = "run") |>
+  left_join(sample_outliers |> dplyr::select(run, outlier_status, flagged_pc, max_abs_robust_z), by = "run") |>
+  mutate(
+    sample_order = match(run, sample_info$run),
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
+      "<br>Original outlier status: ", outlier_status, "<br>Flagged PC: ", if_else(flagged_pc == "", "None", flagged_pc),
+      "<br>Max |robust Z|: ", round(max_abs_robust_z, 2), "<br>RLE median: ", round(middle, 3), "<br>RLE IQR: ", round(upper - lower, 3)
+    )
+  )
+rle_limit <- max(abs(c(ruv_rle_summary$ymin, ruv_rle_summary$ymax)), na.rm = TRUE)
+for (k_value in ruv_k_values) {
+  ruv_rle_k <- ruv_rle_summary |>
+    dplyr::filter(k == k_value) |>
+    arrange(sample_order) |>
+    mutate(run = factor(run, levels = run))
+  cat("\n\n### k =", k_value, "\n\n")
+  p <- ruv_rle_k |>
+    ggplot(aes(x = run, ymin = ymin, lower = lower, middle = middle, upper = upper, ymax = ymax, fill = timepoint, text = hover)) +
+    geom_boxplot(stat = "identity", width = 0.75, alpha = 0.8) +
+    geom_hline(yintercept = 0, linetype = 2) +
+    coord_cartesian(ylim = c(-rle_limit, rle_limit)) +
+    scale_fill_manual(values = timepoint_colors) +
+    labs(x = "Samples", y = "Relative log expression", fill = "Timepoint") +
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+  ggplotly(p, tooltip = "text", height = 520) |>
+    format_plotly() |>
+    htmltools::tagList() |>
+    print()
+}
 ```
 
 # Session Information
