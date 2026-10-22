@@ -599,14 +599,7 @@ sex_outlier_summary <- sample_outliers |>
     .groups = "drop"
   ) |>
   rename(Sex = sex)
-reactable(sex_outlier_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE,
-  columns = list(
-    Sex = colDef(name = "Sex"),
-    Samples = colDef(name = "Samples"),
-    `Non-flagged` = colDef(name = "Non-flagged"),
-    Flagged = colDef(name = "Flagged"),
-    `Flagged (%)` = colDef(name = "Flagged (%)")
-  ))
+reactable(sex_outlier_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## Technical QC {.tabset}
@@ -772,68 +765,115 @@ control_ranking <- topTags(control_test, n = Inf, sort.by = "PValue")$table |>
 ```
 
 ## Empirical Control Genes
-External negative-control genes were not available for this dataset, so empirical controls were selected from the first-pass edgeR ranking. The 5,000 most significant genes were excluded, and the remaining genes were used as empirical negative controls for RUVg.
-These genes are not assumed to be completely invariant; they are used because they are not among the genes showing the strongest evidence of longitudinal or case-associated expression change in the first-pass analysis.
+Two empirical control-gene definitions were evaluated to assess the sensitivity of RUVg to control selection.
+The first follows the RUVSeq example by excluding the 5,000 most significant genes from the first-pass ranking and using all remaining genes as empirical controls. The second uses the least significant 50% of ranked genes as a more conservative control set.
+The same RUVg analysis is performed with both control sets so that their effects on PCA structure can be compared directly.
 ```{r ruv-empirical-controls}
-top_de_genes <- control_ranking |>
-  slice_head(n = 5000) |>
+# Strategy 1: exclude the 5,000 most significant genes
+top5000_genes <- control_ranking |>
+  slice_head(n = min(5000, nrow(control_ranking))) |>
   pull(gene_id)
-empirical_controls <- setdiff(rownames(ruv_counts), top_de_genes)
+empirical_controls_exclude5000 <- setdiff(rownames(ruv_counts), top5000_genes)
+# Strategy 2: use the least significant 50% of ranked genes
+empirical_controls_bottom50 <- control_ranking |>
+  slice_tail(n = floor(nrow(control_ranking) * 0.5)) |>
+  pull(gene_id) |>
+  intersect(rownames(ruv_counts))
+control_sets <- list(exclude_top5000 = empirical_controls_exclude5000, bottom50 = empirical_controls_bottom50)
+control_labels <- c(exclude_top5000 = "Exclude top 5000", bottom50 = "Bottom 50%")
 tibble(
-  Metric = c("Genes ranked in first-pass analysis", "Most significant genes excluded", "Empirical control genes"),
-  Value = c(nrow(control_ranking), length(top_de_genes), length(empirical_controls))
+  `Control strategy` = unname(control_labels[names(control_sets)]),
+  `Genes ranked` = nrow(control_ranking),
+  `Control genes` = lengths(control_sets)
 ) |>
   reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## RUVg Across k = 1 to 10
-The number of unwanted factors (`k`) is not known in advance. RUVg was therefore evaluated across `k = 1-10` as a sensitivity analysis.
-For each value of `k`, RUVg estimates a corresponding set of latent unwanted factors (`W`) and generates an adjusted expression matrix. Increasing `k` does not necessarily improve the analysis: small values may leave substantial unwanted variation, whereas larger values may remove genuine biological structure. PCA and RLE diagnostics are therefore compared across candidate values of `k`.
-```{r ruvg-k-sensitivity}
+RUVg was evaluated across `k = 1-10` for both empirical control-gene definitions. All other analysis settings were held constant so that differences between the resulting PCA structures reflect sensitivity to control-gene selection.
+For each control strategy, increasing values of `k` estimate increasing numbers of latent unwanted factors. The aim is to assess whether the overall RUVg sensitivity pattern is consistent across alternative empirical control definitions.
+```{r ruvg-fits}
 ruv_k_values <- 1:10
-ruv_fits <- setNames(
-  lapply(ruv_k_values, function(k) RUVg(ruv_tmm_logcpm, empirical_controls, k = k, isLog = TRUE, round = FALSE)),
-  paste0("k", ruv_k_values)
-)
+ruv_fits <- purrr::map(control_sets, function(controls) {
+  purrr::map(ruv_k_values, function(k) RUVg(ruv_tmm_logcpm, controls, k = k, isLog = TRUE, round = FALSE)) |>
+    setNames(paste0("k", ruv_k_values))
+})
 ```
 
-## PCA Across RUVg k Values {.tabset}
-PCA was recalculated from each RUVg-adjusted expression matrix to examine how the global sample structure changes as additional unwanted factors are modelled.
-Particular attention is given to the position of samples previously identified as PCA outliers, changes in baseline and follow-up structure, and whether the overall PCA pattern begins to stabilise across successive values of `k`. The percentage of variance explained by PC1 and PC2 is reported for each model, but lower explained variance is not interpreted as automatically better.
-```{r ruvg-pca-comparison, results = "asis"}
-ruv_pca_data <- purrr::map_dfr(ruv_k_values, function(k) {
-  ruv_fit <- ruv_fits[[paste0("k", k)]]
-  pca_k <- prcomp(t(ruv_fit$normalizedCounts), center = TRUE, scale. = FALSE)
-  variance_k <- (pca_k$sdev^2 / sum(pca_k$sdev^2)) * 100
-  as.data.frame(pca_k$x[, 1:2, drop = FALSE]) |>
-    rownames_to_column("run") |>
-    left_join(sample_info, by = "run") |>
-    left_join(sample_outliers |> dplyr::select(run, outlier_status), by = "run") |>
-    mutate(k = k, pc1_variance = variance_k[1], pc2_variance = variance_k[2])
+## PCA Across Empirical Control Strategies
+PCA was recalculated for each combination of empirical control strategy and `k`. The two control-gene definitions are shown separately below to assess whether the main RUVg sensitivity pattern is robust to control selection.
+Interpretation focuses on overall sample structure, the position of previously flagged samples, stability across neighbouring values of `k`, and preservation of plausible biological variation. Lower PC1 or PC2 variance is not interpreted as automatically better.
+```{r ruvg-pca-data}
+ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
+  purrr::map_dfr(ruv_k_values, function(k) {
+    pca_k <- prcomp(t(control_fits[[paste0("k", k)]]$normalizedCounts), center = TRUE, scale. = FALSE)
+    variance_k <- (pca_k$sdev^2 / sum(pca_k$sdev^2)) * 100
+    as.data.frame(pca_k$x[, 1:2, drop = FALSE]) |>
+      rownames_to_column("run") |>
+      mutate(
+        control_id = control_id, control_method = unname(control_labels[control_id]), k = k,
+        pc1_variance = variance_k[1], pc2_variance = variance_k[2]
+      )
+  })
 }) |>
+  left_join(sample_info, by = "run") |>
+  left_join(sample_outliers |> dplyr::select(run, outlier_status), by = "run") |>
   mutate(
     hover = paste0(
       "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
-      "<br>Original outlier status: ", outlier_status, "<br>k: ", k, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2)
-    )
-  )
-for (k_value in ruv_k_values) {
-  ruv_pca_k <- dplyr::filter(ruv_pca_data, k == k_value)
-  cat("\n\n### k =", k_value, "\n\n")
-  plot_ly(
-    data = ruv_pca_k, x = ~PC1, y = ~PC2, type = "scatter", mode = "markers",
-    color = ~timepoint, colors = timepoint_colors, symbol = ~outlier_status, symbols = outlier_shapes,
-    text = ~hover, hoverinfo = "text"
-  ) |>
-    layout(
-      legend = list(title = list(text = "Timepoint / original outlier status")),
-      xaxis = list(title = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)")),
-      yaxis = list(title = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"))
+      "<br>Control strategy: ", control_method, "<br>Original outlier status: ", outlier_status, "<br>k: ", k,
+      "<br>PC1: ", round(PC1, 2), " (", round(pc1_variance, 1), "%)", "<br>PC2: ", round(PC2, 2), " (", round(pc2_variance, 1), "%)"
+    ))
+plot_ruv_pca_tabs <- function(control_id_selected) {
+  for (k_value in ruv_k_values) {
+    ruv_pca_k <- ruv_pca_data |>
+      dplyr::filter(control_id == control_id_selected, k == k_value)
+    cat("\n\n#### k = ", k_value, "\n\n", sep = "")
+    plot_ly(
+      data = ruv_pca_k, x = ~PC1, y = ~PC2, type = "scatter", mode = "markers",
+      color = ~timepoint, colors = timepoint_colors, symbol = ~outlier_status, symbols = outlier_shapes,
+      text = ~hover, hoverinfo = "text"
     ) |>
-    format_plotly() |>
-    htmltools::tagList() |>
-    print()
-}
+      layout(
+        legend = list(title = list(text = "Timepoint / original outlier status")),
+        xaxis = list(title = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)")),
+        yaxis = list(title = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"))
+      ) |>
+      format_plotly() |>
+      htmltools::tagList() |>
+      print()
+  }}
+```
+
+### Exclude Top 5000 {.tabset}
+This strategy excludes the 5,000 genes with the strongest evidence of expression change in the first-pass edgeR analysis and uses all remaining genes as empirical controls.
+```{r ruvg-pca-exclude-top5000, results = "asis"}
+plot_ruv_pca_tabs("exclude_top5000")
+```
+
+### Bottom 50% {.tabset}
+This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
+```{r ruvg-pca-bottom50, results = "asis"}
+plot_ruv_pca_tabs("bottom50")
+```
+
+### Variance Explained Comparison
+PC1 and PC2 variance explained are compared across both empirical control strategies and all values of `k`. Similar trajectories would indicate that the overall RUVg sensitivity pattern is relatively robust to the definition of empirical control genes.
+```{r ruv-control-variance-comparison}
+ruv_variance_summary <- ruv_pca_data |>
+  distinct(control_method, k, pc1_variance, pc2_variance) |>
+  pivot_longer(cols = c(pc1_variance, pc2_variance), names_to = "PC", values_to = "variance") |>
+  mutate(
+    PC = recode(PC, pc1_variance = "PC1", pc2_variance = "PC2"),
+    hover = paste0("Control strategy: ", control_method, "<br>k: ", k, "<br>", PC, ": ", round(variance, 2), "%")
+  )
+p <- ruv_variance_summary |>
+  ggplot(aes(x = k, y = variance, color = control_method, group = control_method, text = hover)) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 2.2) +
+  facet_wrap(~ PC, ncol = 1, scales = "free_y") +
+  labs(x = "Number of unwanted factors (k)", y = "Variance explained (%)", color = "Control strategy")
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 # Analysis Notes
