@@ -27,7 +27,7 @@ disease_colors <- c("control" = "#0072B2", "T2D case" = "#D55E00")
 timepoint_colors <- c("baseline" = "#009E73", "follow-up" = "#CC79A7")
 outlier_colors <- c("No" = "#7A7A7A", "Potential" = "#E69F00", "Unambiguous" = "#D55E00")
 outlier_binary_colors <- c("No" = "#7A7A7A", "Flagged" = "#D55E00")
-timepoint_shapes <- c("baseline" = 16, "follow-up" = 17)
+timepoint_shapes <- c("baseline" = 19, "follow-up" = 21)
 outlier_shapes <- c("No" = 16, "Potential" = 17, "Unambiguous" = 15)
 cchc_theme <- function() {
   theme_bw(base_size = 12) +
@@ -794,7 +794,7 @@ reactable(
 
 # Unwanted Variation Assessment
 
-Unwanted variation was assessed using RUVg to determine whether latent technical or sample-level factors could explain part of the expression structure observed during PCA. Particular attention was given to samples previously identified as potential or unambiguous PCA outliers.
+Unwanted variation was assessed using RUVg to determine whether latent technical or sample-level factors could explain part of the expression structure observed during PCA.
 
 ## RUV Setup
 
@@ -911,8 +911,7 @@ ruv_fits <- purrr::map(control_sets, function(controls) {
 
 ## PCA Across Empirical Control Strategies
 
-PCA was recalculated for each combination of empirical control strategy and `k`. The two control-gene definitions are shown separately below to assess whether the main RUVg sensitivity pattern is robust to control selection.
-Interpretation focuses on overall sample structure, the position of previously flagged samples, stability across neighbouring values of `k`, and preservation of plausible biological variation.
+PCA was recalculated for each combination of empirical control-gene strategy and `k`.
 
 ```{r ruvg-pca-data}
 ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
@@ -928,49 +927,55 @@ ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
   })
 }) |>
   left_join(sample_info, by = "run") |>
-  left_join(sample_outliers |> dplyr::select(run, outlier_status), by = "run") |>
   mutate(
-    hover = paste0(
-      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
-      "<br>Control strategy: ", control_method, "<br>Original outlier status: ", outlier_status, "<br>k: ", k,
-      "<br>PC1: ", round(PC1, 2), " (", round(pc1_variance, 1), "%)",
-      "<br>PC2: ", round(PC2, 2), " (", round(pc2_variance, 1), "%)"
-    ))
-plot_ruv_pca_tabs <- function(control_id_selected) {
-  for (k_value in ruv_k_values) {
-    ruv_pca_k <- ruv_pca_data |>
-      dplyr::filter(control_id == control_id_selected, k == k_value)
-    cat("\n\n#### k = ", k_value, "\n\n", sep = "")
-    plot_ly(
-      data = ruv_pca_k, x = ~PC1, y = ~PC2, type = "scatter", mode = "markers",
-      color = ~timepoint, colors = timepoint_colors, symbol = ~outlier_status, symbols = outlier_shapes,
-      text = ~hover, hoverinfo = "text"
-    ) |>
-      layout(
-        legend = list(title = list(text = "Timepoint / original outlier status")),
-        xaxis = list(title = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)")),
-        yaxis = list(title = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"))
-      ) |>
-      format_plotly() |>
-      htmltools::tagList() |>
-      print()
-  }}
+    disease_state = factor(disease_state, levels = c("control", "T2D case")),
+    timepoint = factor(timepoint, levels = c("baseline", "follow-up"))
+  )
 ```
 
-### Exclude Top 5000 {.tabset}
-
-This strategy excludes the 5,000 genes with the strongest evidence of expression change in the first-pass edgeR analysis and uses all remaining genes as empirical controls.
-
-```{r ruvg-pca-exclude-top5000, results = "asis"}
-plot_ruv_pca_tabs("exclude_top5000")
+```{r ruvg-pca-function}
+plot_ruv_strategy <- function(control_id_selected) {
+  plot_data <- ruv_pca_data |>
+    dplyr::filter(control_id == control_id_selected) |>
+    mutate(
+      facet_label = paste0(
+        "k = ", k, "\nPC1 ", round(pc1_variance, 1), "%", " | PC2 ", round(pc2_variance, 1), "%"
+      )
+    )
+  facet_levels <- plot_data |>
+    distinct(k, facet_label) |>
+    arrange(k) |>
+    pull(facet_label)
+  plot_data <- plot_data |>
+    mutate(facet_label = factor(facet_label, levels = facet_levels))
+  ggplot(plot_data, aes(x = PC1, y = PC2)) +
+    stat_ellipse(
+      aes(group = timepoint, linetype = timepoint),
+      type = "t", level = 0.95, linewidth = 0.6, color = "grey45", show.legend = FALSE
+    ) +
+    geom_point(aes(color = disease_state, shape = timepoint), size = 2.4, alpha = 0.85, stroke = 0.8) +
+    scale_color_manual(values = disease_colors, drop = FALSE) +
+    scale_shape_manual(values = timepoint_shapes, drop = FALSE) +
+    facet_wrap(~ facet_label, ncol = 5) +
+    labs(x = "PC1 score", y = "PC2 score", color = "Disease state", shape = "Timepoint") +
+    cchc_theme()
+}
 ```
 
-### Bottom 50% {.tabset}
+### Exclude Top 5000
+
+This strategy excludes the 5,000 genes with the strongest evidence of longitudinal or case-associated expression change in the first-pass edgeR analysis and uses the remaining genes as empirical controls.
+
+```{r ruvg-pca-exclude-top5000, fig.width = 13, fig.height = 8}
+plot_ruv_strategy("exclude_top5000")
+```
+
+### Bottom 50%
 
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
 
-```{r ruvg-pca-bottom50, results = "asis"}
-plot_ruv_pca_tabs("bottom50")
+```{r ruvg-pca-bottom50, fig.width = 13, fig.height = 8}
+plot_ruv_strategy("bottom50")
 ```
 
 # Session Information
