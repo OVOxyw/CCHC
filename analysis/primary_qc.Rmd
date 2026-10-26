@@ -969,26 +969,29 @@ ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
 ## Fixed axis limits shared by every strategy and k, centred on zero
 ruv_pc1_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC1))
 ruv_pc2_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC2))
-plot_ruv_pca <- function(control_id_selected, k_value) {
-  plot_data <- ruv_pca_data |>
-    dplyr::filter(control_id == control_id_selected, k == k_value)
-  pc1_var <- unique(plot_data$pc1_variance)
-  pc2_var <- unique(plot_data$pc2_variance)
-  ggplot(plot_data, aes(x = PC1, y = PC2)) +
-    stat_ellipse(
-      aes(group = timepoint, linetype = timepoint),
-      type = "t", level = 0.95, linewidth = 0.6, color = "grey45", show.legend = FALSE
-    ) +
-    geom_point(aes(color = disease_state, shape = timepoint), size = 2.4, alpha = 0.85, stroke = 0.8) +
-    scale_color_manual(values = disease_colors, drop = FALSE) +
-    scale_shape_manual(values = timepoint_shapes, drop = FALSE) +
-    labs(
-      x = paste0("PC1 (", round(pc1_var, 1), "%)"),
-      y = paste0("PC2 (", round(pc2_var, 1), "%)"),
-      color = "Disease state", shape = "Timepoint"
-    ) +
-    coord_cartesian(xlim = ruv_pc1_lim, ylim = ruv_pc2_lim) +
-    cchc_theme()
+plot_ruv_pca_tabs <- function(control_id_selected) {
+  for (k_value in ruv_k_values) {
+    ruv_pca_k <- ruv_pca_data |>
+      dplyr::filter(control_id == control_id_selected, k == k_value)
+    cat("\n\n#### k = ", k_value, "\n\n", sep = "")
+    p <- ggplot(ruv_pca_k, aes(x = PC1, y = PC2, color = disease_state, shape = timepoint)) +
+      stat_ellipse(
+        aes(group = interaction(disease_state, timepoint), color = disease_state, linetype = timepoint),
+        level = 0.95, linewidth = 0.8
+      ) +
+      geom_point(size = 2.8, alpha = 0.85) +
+      scale_color_manual(values = disease_colors) +
+      scale_shape_manual(values = c("baseline" = 19, "follow-up" = 21)) +
+      scale_linetype_manual(values = c("baseline" = "solid", "follow-up" = "dashed")) +
+      labs(
+        x = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)"),
+        y = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"),
+        color = "Disease state", shape = "Timepoint", linetype = "Timepoint"
+      ) +
+      coord_cartesian(xlim = ruv_pc1_lim, ylim = ruv_pc2_lim) +
+      cchc_theme()
+    print(p)
+  }
 }
 ```
 
@@ -997,11 +1000,7 @@ plot_ruv_pca <- function(control_id_selected, k_value) {
 This strategy excludes the 5,000 genes with the strongest evidence of longitudinal or case-associated expression change in the first-pass edgeR analysis and uses the remaining genes as empirical controls.
 
 ```{r ruvg-pca-exclude-top5000, results = "asis", fig.width = 9, fig.height = 7}
-for (k_value in ruv_k_values) {
-  cat("\n\n#### k = ", k_value, "\n\n", sep = "")
-  print(plot_ruv_pca("exclude_top5000", k_value))
-  cat("\n\n")
-}
+plot_ruv_pca_tabs("exclude_top5000")
 ```
 
 ### Bottom 50% {.tabset}
@@ -1009,11 +1008,7 @@ for (k_value in ruv_k_values) {
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
 
 ```{r ruvg-pca-bottom50, results = "asis", fig.width = 9, fig.height = 7}
-for (k_value in ruv_k_values) {
-  cat("\n\n#### k = ", k_value, "\n\n", sep = "")
-  print(plot_ruv_pca("bottom50", k_value))
-  cat("\n\n")
-}
+plot_ruv_pca_tabs("bottom50")
 ```
 
 # Session Information
