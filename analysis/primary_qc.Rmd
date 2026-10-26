@@ -452,9 +452,10 @@ n_pc_shown <- min(10, length(variance_explained))
 pca_variance <- tibble(
   PC = factor(paste0("PC", seq_len(n_pc_shown)), levels = paste0("PC", seq_len(n_pc_shown))),
   Variance = variance_explained[seq_len(n_pc_shown)])
-plot_ly(data = pca_variance, x = ~PC, y = ~Variance, type = "bar", text = ~paste0(
-  PC, ": ", round(Variance, 2), "%"
-), hoverinfo = "text") |>
+plot_ly(
+  data = pca_variance, x = ~PC, y = ~Variance, type = "bar",
+  text = ~paste0(PC, ": ", round(Variance, 2), "%"), hoverinfo = "text"
+) |>
   layout(xaxis = list(title = "Principal component"), yaxis = list(title = "Variance explained (%)")) |>
   format_plotly()
 ```
@@ -464,20 +465,25 @@ plot_ly(data = pca_variance, x = ~PC, y = ~Variance, type = "bar", text = ~paste
 PC1 and PC2 represent the two largest directions of variation in the expression matrix. Samples are coloured by disease state and distinguished by timepoint, while paired samples from the same individual are connected by grey lines.
 
 ```{r pca-pc1-pc2}
-plot_ly(data = pca_data, x = ~PC1, y = ~PC2) |>
-  add_paths(
-    data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5,
-    hoverinfo = "none", showlegend = FALSE
-  ) |>
-  add_markers(
-    color = ~disease_state, colors = disease_colors, symbol = ~timepoint, symbols = timepoint_shapes,
-    text = ~paste0(hover, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2)),
-    hoverinfo = "text") |>
-  layout(
-    legend = list(title = list(text = "Group / timepoint")),
-    xaxis = list(title = paste0("PC1 (", round(variance_explained[1], 1), "%)")),
-    yaxis = list(title = paste0("PC2 (", round(variance_explained[2], 1), "%)"))) |>
-  format_plotly()
+p <- pca_data |>
+  ggplot(aes(x = PC1, y = PC2)) +
+  geom_line(aes(group = individual), color = "grey70", linewidth = 0.5, alpha = 0.5) +
+  geom_point(
+    aes(
+      color = disease_state, shape = timepoint,
+      text = paste0(hover, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2))
+    ),
+    size = 2.5, alpha = 0.85
+  ) +
+  scale_color_manual(values = disease_colors) +
+  scale_shape_manual(values = timepoint_shapes) +
+  labs(
+    x = paste0("PC1 (", round(variance_explained[1], 1), "%)"),
+    y = paste0("PC2 (", round(variance_explained[2], 1), "%)"),
+    color = "Disease state", shape = "Timepoint"
+  ) +
+  cchc_theme()
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 #### PC3 vs PC4
@@ -485,20 +491,25 @@ plot_ly(data = pca_data, x = ~PC1, y = ~PC2) |>
 PC3 and PC4 were also examined because sample-specific or technical variation may not be restricted to the first two principal components. The same disease-state, timepoint, and paired-sample visual encoding is retained for consistency.
 
 ```{r pca-pc3-pc4}
-plot_ly(data = pca_data, x = ~PC3, y = ~PC4) |>
-  add_paths(
-    data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5,
-    hoverinfo = "none", showlegend = FALSE
-  ) |>
-  add_markers(
-    color = ~disease_state, colors = disease_colors, symbol = ~timepoint, symbols = timepoint_shapes,
-    text = ~paste0(hover, "<br>PC3: ", round(PC3, 2), "<br>PC4: ", round(PC4, 2)),
-    hoverinfo = "text") |>
-  layout(
-    legend = list(title = list(text = "Group / timepoint")),
-    xaxis = list(title = paste0("PC3 (", round(variance_explained[3], 1), "%)")),
-    yaxis = list(title = paste0("PC4 (", round(variance_explained[4], 1), "%)"))) |>
-  format_plotly()
+p <- pca_data |>
+  ggplot(aes(x = PC3, y = PC4)) +
+  geom_line(aes(group = individual), color = "grey70", linewidth = 0.5, alpha = 0.5) +
+  geom_point(
+    aes(
+      color = disease_state, shape = timepoint,
+      text = paste0(hover, "<br>PC3: ", round(PC3, 2), "<br>PC4: ", round(PC4, 2))
+    ),
+    size = 2.5, alpha = 0.85
+  ) +
+  scale_color_manual(values = disease_colors) +
+  scale_shape_manual(values = timepoint_shapes) +
+  labs(
+    x = paste0("PC3 (", round(variance_explained[3], 1), "%)"),
+    y = paste0("PC4 (", round(variance_explained[4], 1), "%)"),
+    color = "Disease state", shape = "Timepoint"
+  ) +
+  cchc_theme()
+format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 # Robust Outlier Detection
@@ -798,17 +809,25 @@ Unwanted variation was assessed using RUVg to determine whether latent technical
 
 ## RUV Setup
 
-The filtered gene-level expression matrix used for the previous PCA assessment was retained for the RUV analysis so that the same genes and samples were evaluated consistently. Sample metadata were aligned to the expression matrix, and the longitudinal pairing structure was retained for the first-pass expression analysis.
+The same samples and gene filter used in the preceding expression-level assessment were retained for the RUV analysis.
 
 ```{r ruv-setup}
-ruv_counts <- gene_counts[keep, , drop = FALSE]
+# Length-scaled gene-level counts
+txi_ruv <- tximport(
+  quant_files, type = "salmon", tx2gene = tx2gene, ignoreTxVersion = TRUE, dropInfReps = TRUE,
+  countsFromAbundance = "lengthScaledTPM"
+)
+# Confirm that gene ordering is identical to the original tximport object
+stopifnot(identical(rownames(txi_ruv$counts), rownames(gene_counts)))
+# Keep the same gene set used in the preceding expression-level assessment
+ruv_counts <- txi_ruv$counts[keep, , drop = FALSE]
 ruv_pheno <- as.data.frame(sample_info)
 rownames(ruv_pheno) <- ruv_pheno$run
 stopifnot(identical(colnames(ruv_counts), rownames(ruv_pheno)))
 ruv_pheno$individual <- factor(ruv_pheno$individual)
 ruv_pheno$timepoint <- relevel(factor(ruv_pheno$timepoint), ref = "baseline")
 ruv_pheno$disease_state <- relevel(factor(ruv_pheno$disease_state), ref = "control")
-ruv_pheno$case_followup <- as.integer(ruv_pheno$disease_state != "control" & ruv_pheno$timepoint == "follow-up")
+ruv_pheno$case_followup <- as.integer(ruv_pheno$disease_state == "T2D case" & ruv_pheno$timepoint == "follow-up")
 ruv_sample_colors <- timepoint_colors[as.character(ruv_pheno$timepoint)]
 ```
 
