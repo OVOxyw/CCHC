@@ -37,18 +37,16 @@ cchc_theme <- function() {
       strip.text = element_text(face = "bold"),
       legend.position = "top",
       panel.grid.minor = element_blank()
-    )
-}
+    )}
 theme_set(cchc_theme())
-format_plotly <- function(p) {
+format_plotly <- function(p){
   p |>
     layout(
       hovermode = "closest",
       font = list(size = 12),
       margin = list(l = 70, r = 40, b = 60, t = 40)
     ) |>
-    config(displaylogo = FALSE, responsive = TRUE)
-}
+    config(displaylogo = FALSE, responsive = TRUE)}
 qc <- read_tsv("../output/qc/sample_qc_summary.tsv", show_col_types = FALSE) |>
   mutate(
     library_size_input_million = salmon_processed_fragments / 1e6,
@@ -59,7 +57,9 @@ qc <- read_tsv("../output/qc/sample_qc_summary.tsv", show_col_types = FALSE) |>
 ```
 
 # Data Summary
+
 This section summarises the samples included in this analysis, including the number of individuals, longitudinal timepoints, and disease groups. Each individual contributes paired baseline and follow-up samples.
+
 ```{r data-summary}
 tibble(
   Metric = c("Samples", "Individuals", "Baseline samples", "Follow-up samples"),
@@ -69,6 +69,7 @@ tibble(
 ```
 
 The table below shows the distribution of samples across disease state and timepoint.
+
 ```{r group-summary}
 qc |>
   dplyr::count(disease_state, timepoint, name = "Samples") |>
@@ -76,7 +77,9 @@ qc |>
 ```
 
 ## Sample QC Table
+
 This table combines the main sample-level QC metrics used throughout the report. It includes library size, mapping performance, library compatibility, fragment characteristics, and whole-blood RNA composition.
+
 ```{r sample-qc-table}
 sample_qc <- qc |>
   transmute(
@@ -112,12 +115,13 @@ reactable(
     fragment_length_sd = colDef(name = "Fragment SD"),
     rrna_mean_pct = colDef(name = "rRNA (%)"),
     hbrna_mean_pct = colDef(name = "HbRNA (%)")
-  )
-)
+  ))
 ```
 
 ## Salmon Library Type
+
 This table summarises the Salmon-inferred library type across all samples. Consistent library-type inference helps confirm that the sequencing libraries show similar strand-orientation characteristics across the dataset.
+
 ```{r library-type}
 qc |>
   dplyr::count(library_type, name = "Samples") |>
@@ -128,16 +132,22 @@ qc |>
 ```
 
 # Salmon QC {.tabset}
+
 This section reviews sample-level technical metrics derived from Salmon quantification.
 
 ## Mapping Rate
+
 Mapping rate represents the proportion of processed fragments successfully mapped during Salmon quantification. Samples with relatively low mapping rates are reviewed together with library size, library compatibility, decoy alignment, and RNA composition.
+
 ```{r mapping-rate}
 p <- qc |>
   arrange(mapping_rate) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Mapping rate: ", round(mapping_rate, 2), "%")
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint, "<br>Mapping rate: ", round(mapping_rate, 2), "%"
+    )
   ) |>
   ggplot(aes(x = sample_order, y = mapping_rate, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
@@ -147,20 +157,27 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Library Size
+
 Library size was examined at two stages. Input library size represents the number of fragments processed by Salmon, while output library size represents the number of fragments successfully mapped. Comparing these values helps identify samples with unusually low sequencing depth or substantial loss of fragments during mapping.
+
 ```{r library-size}
 library_size_plot <- qc |>
   arrange(library_size_input_million) |>
   mutate(sample_order = row_number()) |>
-  dplyr::select(run, individual, disease_state, timepoint, sample_order, library_size_input_million, library_size_output_million) |>
-  pivot_longer(cols = c(library_size_input_million, library_size_output_million), names_to = "library_stage", values_to = "library_size_million") |>
+  dplyr::select(
+    run, individual, disease_state, timepoint, sample_order, library_size_input_million,
+    library_size_output_million
+  ) |>
+  pivot_longer(
+    cols = c(library_size_input_million, library_size_output_million), names_to = "library_stage",
+    values_to = "library_size_million"
+  ) |>
   mutate(
     library_stage = recode(library_stage, library_size_input_million = "Input", library_size_output_million = "Output"),
     hover = paste0(
       "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
       "<br>Stage: ", library_stage, "<br>Library size: ", round(library_size_million, 2), " million fragments"
-    )
-  )
+    ))
 p <- library_size_plot |>
   ggplot(aes(x = sample_order, y = library_size_million, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
@@ -171,6 +188,7 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### Input vs Output
+
 ```{r library-size-input-output}
 p <- qc |>
   mutate(
@@ -179,9 +197,11 @@ p <- qc |>
       "<br>Input: ", round(library_size_input_million, 2), " M",
       "<br>Output: ", round(library_size_output_million, 2), " M",
       "<br>Mapping: ", round(mapping_rate, 2), "%"
-    )
-  ) |>
-  ggplot(aes(x = library_size_input_million, y = library_size_output_million, color = disease_state, shape = timepoint, text = hover)) +
+    )) |>
+  ggplot(aes(
+    x = library_size_input_million, y = library_size_output_million, color = disease_state,
+    shape = timepoint, text = hover
+  )) +
   geom_point(size = 2.5, alpha = 0.8) +
   scale_color_manual(values = disease_colors) +
   scale_shape_manual(values = timepoint_shapes) +
@@ -189,20 +209,23 @@ p <- qc |>
     x = "Input library size (million processed fragments)",
     y = "Output library size (million mapped fragments)",
     color = "Disease state",
-    shape = "Timepoint"
-  )
+    shape = "Timepoint")
 format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Library Compatibility
+
 Library compatibility represents the proportion of mapped fragments that are consistent with the inferred library type. Samples with relatively low compatibility may indicate differences in library structure or mapping behaviour and are therefore reviewed together with mapping rate, decoy alignment, and other QC metrics.
+
 ```{r library-compatibility}
 p <- qc |>
   arrange(library_compatible_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Compatible: ", round(library_compatible_pct, 2), "%")
-  ) |>
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint, "<br>Compatible: ", round(library_compatible_pct, 2), "%"
+    )) |>
   ggplot(aes(x = sample_order, y = library_compatible_pct, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   scale_color_manual(values = timepoint_colors) +
@@ -211,14 +234,18 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Decoy Alignment
+
 Decoy alignment represents the proportion of processed fragments that preferentially align to decoy sequences rather than the annotated transcriptome. Elevated decoy proportions may indicate increased off-target or ambiguous alignment and are therefore interpreted together with mapping rate, library compatibility, and other technical QC metrics.
+
 ```{r decoy-alignment}
 p <- qc |>
   arrange(decoy_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Decoy: ", round(decoy_pct, 2), "%")
-  ) |>
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint, "<br>Decoy: ", round(decoy_pct, 2), "%"
+    )) |>
   ggplot(aes(x = sample_order, y = decoy_pct, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   scale_color_manual(values = timepoint_colors) +
@@ -227,14 +254,19 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## Fragment Length
+
 Fragment length reflects the estimated insert size distribution of each RNA-seq library. Samples with unusually short or long mean fragment lengths may indicate differences in library preparation, RNA integrity, or sequencing characteristics and are therefore reviewed as part of the overall technical QC assessment.
+
 ```{r fragment-length}
 p <- qc |>
   arrange(fragment_length_mean) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Mean fragment length: ", round(fragment_length_mean, 2), " bp")
-  ) |>
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint,
+      "<br>Mean fragment length: ", round(fragment_length_mean, 2), " bp"
+    )) |>
   ggplot(aes(x = sample_order, y = fragment_length_mean, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   scale_color_manual(values = timepoint_colors) +
@@ -243,17 +275,22 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 # Whole-blood QC {.tabset}
+
 Whole-blood RNA-seq can contain substantial variation in ribosomal RNA (rRNA) and haemoglobin-derived RNA (HbRNA). These components are examined separately because unusually high proportions may influence global expression patterns and contribute to sample-level variation.
 
 ## rRNA
+
 rRNA content was reviewed across samples to identify libraries with unusually high ribosomal RNA proportions. R1 and R2 values were also compared to assess whether elevated rRNA levels were consistent between paired reads.
+
 ```{r rrna-samples}
 p <- qc |>
   arrange(rrna_mean_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>rRNA: ", round(rrna_mean_pct, 2), "%")
-  ) |>
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint, "<br>rRNA: ", round(rrna_mean_pct, 2), "%"
+    )) |>
   ggplot(aes(x = sample_order, y = rrna_mean_pct, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   scale_color_manual(values = timepoint_colors) +
@@ -263,7 +300,10 @@ format_plotly(ggplotly(p, tooltip = "text"))
 
 ```{r rrna-r1-r2}
 p <- qc |>
-  mutate(hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>R1: ", round(rrna_r1_pct, 2), "%", "<br>R2: ", round(rrna_r2_pct, 2), "%")) |>
+  mutate(hover = paste0(
+    "Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint,
+    "<br>R1: ", round(rrna_r1_pct, 2), "%", "<br>R2: ", round(rrna_r2_pct, 2), "%"
+  )) |>
   ggplot(aes(x = rrna_r1_pct, y = rrna_r2_pct, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   geom_abline(slope = 1, intercept = 0, linetype = 2) +
@@ -273,14 +313,18 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ## HbRNA
+
 HbRNA content was examined because haemoglobin-derived transcripts can account for a substantial proportion of whole-blood RNA-seq reads and may influence downstream expression structure. R1 and R2 values were compared to assess the consistency of HbRNA enrichment within each sample.
+
 ```{r hbrna-samples}
 p <- qc |>
   arrange(hbrna_mean_pct) |>
   mutate(
     sample_order = row_number(),
-    hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>HbRNA: ", round(hbrna_mean_pct, 2), "%")
-  ) |>
+    hover = paste0(
+      "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state,
+      "<br>Timepoint: ", timepoint, "<br>HbRNA: ", round(hbrna_mean_pct, 2), "%"
+    )) |>
   ggplot(aes(x = sample_order, y = hbrna_mean_pct, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   scale_color_manual(values = timepoint_colors) +
@@ -290,7 +334,10 @@ format_plotly(ggplotly(p, tooltip = "text"))
 
 ```{r hbrna-r1-r2}
 p <- qc |>
-  mutate(hover = paste0("Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint, "<br>R1: ", round(hbrna_r1_pct, 2), "%", "<br>R2: ", round(hbrna_r2_pct, 2), "%")) |>
+  mutate(hover = paste0(
+    "Run: ", run, "<br>Individual: ", individual, "<br>Timepoint: ", timepoint,
+    "<br>R1: ", round(hbrna_r1_pct, 2), "%", "<br>R2: ", round(hbrna_r2_pct, 2), "%"
+  )) |>
   ggplot(aes(x = hbrna_r1_pct, y = hbrna_r2_pct, color = timepoint, text = hover)) +
   geom_point(size = 2.4, alpha = 0.8) +
   geom_abline(slope = 1, intercept = 0, linetype = 2) +
@@ -300,7 +347,9 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 # QC Summary
+
 This table summarises the observed minimum, median, and maximum values for the main QC metrics across all samples. It provides a cohort-level reference for interpreting individual samples and helps place potentially unusual values in the context of the overall dataset.
+
 ```{r qc-summary}
 qc_summary <- qc |>
   summarise(
@@ -308,8 +357,7 @@ qc_summary <- qc |>
       c(library_size_input_million, library_size_output_million, mapping_rate, library_compatible_pct, decoy_pct,
         fragment_length_mean, fragment_length_sd, rrna_mean_pct, hbrna_mean_pct),
       list(min = ~ min(.x, na.rm = TRUE), median = ~ median(.x, na.rm = TRUE), max = ~ max(.x, na.rm = TRUE))
-    )
-  ) |>
+    )) |>
   pivot_longer(everything(), names_to = c("metric", ".value"), names_pattern = "(.+)_(min|median|max)$") |>
   mutate(
     across(c(min, median, max), ~ round(.x, 2)),
@@ -320,8 +368,11 @@ reactable(qc_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highl
 ```
 
 # Expression-level Assessment
+
 ## Import Salmon Counts
+
 Gene-level expression counts were imported from Salmon transcript quantification using tximport and the GRCh38 gene annotation. Transcript-level estimates were summarised to genes before downstream expression-level quality assessment.
+
 ```{r import-expression}
 sample_metadata <- read_csv("../config/PRJNA762935.csv", show_col_types = FALSE) |>
   dplyr::select(run = Run, age = AGE, sex)
@@ -343,14 +394,18 @@ gene_counts <- txi$counts
 stopifnot(ncol(gene_counts) == nrow(sample_info), identical(colnames(gene_counts), sample_info$run))
 tibble(
   Metric = c("Salmon quant files", "Imported samples", "Genes", "Samples missing age", "Samples missing sex"),
-  Value = c(length(quant_files), ncol(gene_counts), nrow(gene_counts), sum(is.na(sample_info$age)), sum(is.na(sample_info$sex)))
-) |>
+  Value = c(
+    length(quant_files), ncol(gene_counts), nrow(gene_counts), sum(is.na(sample_info$age)),
+    sum(is.na(sample_info$sex))
+  )) |>
   reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## Variance-stabilised Expression
+
 Low-expression genes were filtered before PCA to reduce noise from genes with minimal information across the dataset. Genes were retained when they had at least 10 counts in at least five samples.
 Variance-stabilising transformation (VST) was then applied to the filtered expression matrix. VST reduces the dependence of variance on mean expression and provides a more suitable scale for sample-level PCA and exploratory structure assessment.
+
 ```{r vst-expression}
 coldata <- as.data.frame(sample_info)
 rownames(coldata) <- coldata$run
@@ -362,14 +417,15 @@ vsd <- vst(dds, blind = TRUE)
 vst_matrix <- assay(vsd)
 tibble(
   Metric = c("Genes before filtering", "Genes retained for PCA", "Samples"),
-  Value = c(nrow(gene_counts), nrow(vst_matrix), ncol(vst_matrix))
-) |>
+  Value = c(nrow(gene_counts), nrow(vst_matrix), ncol(vst_matrix))) |>
   reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
 ```
 
 ## PCA
+
 Principal component analysis (PCA) was used to examine global sample-level expression structure after variance-stabilising transformation. PCA reduces the high-dimensional gene-expression matrix into a smaller number of orthogonal components that capture the major sources of variation between samples.
 The percentage associated with each principal component represents the proportion of total expression variance explained by that component. A lower percentage is not inherently better; the components are used to identify major expression patterns, sample clustering, and potentially unusual samples.
+
 ```{r run-pca}
 pca <- prcomp(t(vst_matrix), center = TRUE, scale. = FALSE)
 variance_explained <- (pca$sdev^2 / sum(pca$sdev^2)) * 100
@@ -377,65 +433,79 @@ pca_data <- as.data.frame(pca$x[, 1:4, drop = FALSE]) |>
   rownames_to_column("run") |>
   left_join(sample_info, by = "run") |>
   mutate(
-    hover = paste0("Run: ", run, "<br>Sample: ", sample, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Age: ", age, "<br>Sex: ", sex)
-  )
+    hover = paste0(
+      "Run: ", run, "<br>Sample: ", sample, "<br>Individual: ", individual,
+      "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint, "<br>Age: ", age, "<br>Sex: ", sex
+    ))
 ```
 
 ### PCA Diagnostics {.tabset}
+
 The first four principal components were examined to assess the major expression patterns in the dataset. Paired baseline and follow-up samples from the same individual are connected to visualise longitudinal movement between timepoints.
 
 #### Variance Explained
+
 This plot shows the proportion of total expression variance explained by the leading principal components. It provides an overview of how strongly the dataset is dominated by the first few dimensions of variation.
+
 ```{r pca-variance}
 n_pc_shown <- min(10, length(variance_explained))
 pca_variance <- tibble(
   PC = factor(paste0("PC", seq_len(n_pc_shown)), levels = paste0("PC", seq_len(n_pc_shown))),
-  Variance = variance_explained[seq_len(n_pc_shown)]
-)
-plot_ly(data = pca_variance, x = ~PC, y = ~Variance, type = "bar", text = ~paste0(PC, ": ", round(Variance, 2), "%"), hoverinfo = "text") |>
+  Variance = variance_explained[seq_len(n_pc_shown)])
+plot_ly(data = pca_variance, x = ~PC, y = ~Variance, type = "bar", text = ~paste0(
+  PC, ": ", round(Variance, 2), "%"
+), hoverinfo = "text") |>
   layout(xaxis = list(title = "Principal component"), yaxis = list(title = "Variance explained (%)")) |>
   format_plotly()
 ```
 
 #### PC1 vs PC2
+
 PC1 and PC2 represent the two largest directions of variation in the expression matrix. Samples are coloured by disease state and distinguished by timepoint, while paired samples from the same individual are connected by grey lines.
+
 ```{r pca-pc1-pc2}
 plot_ly(data = pca_data, x = ~PC1, y = ~PC2) |>
-  add_paths(data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5, hoverinfo = "none", showlegend = FALSE) |>
+  add_paths(
+    data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5,
+    hoverinfo = "none", showlegend = FALSE
+  ) |>
   add_markers(
     color = ~disease_state, colors = disease_colors, symbol = ~timepoint, symbols = timepoint_shapes,
     text = ~paste0(hover, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2)),
-    hoverinfo = "text"
-  ) |>
+    hoverinfo = "text") |>
   layout(
     legend = list(title = list(text = "Group / timepoint")),
     xaxis = list(title = paste0("PC1 (", round(variance_explained[1], 1), "%)")),
-    yaxis = list(title = paste0("PC2 (", round(variance_explained[2], 1), "%)"))
-  ) |>
+    yaxis = list(title = paste0("PC2 (", round(variance_explained[2], 1), "%)"))) |>
   format_plotly()
 ```
 
 #### PC3 vs PC4
+
 PC3 and PC4 were also examined because sample-specific or technical variation may not be restricted to the first two principal components. The same disease-state, timepoint, and paired-sample visual encoding is retained for consistency.
+
 ```{r pca-pc3-pc4}
 plot_ly(data = pca_data, x = ~PC3, y = ~PC4) |>
-  add_paths(data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5, hoverinfo = "none", showlegend = FALSE) |>
+  add_paths(
+    data = group_by(pca_data, individual), line = list(color = "grey", width = 1), opacity = 0.5,
+    hoverinfo = "none", showlegend = FALSE
+  ) |>
   add_markers(
     color = ~disease_state, colors = disease_colors, symbol = ~timepoint, symbols = timepoint_shapes,
     text = ~paste0(hover, "<br>PC3: ", round(PC3, 2), "<br>PC4: ", round(PC4, 2)),
-    hoverinfo = "text"
-  ) |>
+    hoverinfo = "text") |>
   layout(
     legend = list(title = list(text = "Group / timepoint")),
     xaxis = list(title = paste0("PC3 (", round(variance_explained[3], 1), "%)")),
-    yaxis = list(title = paste0("PC4 (", round(variance_explained[4], 1), "%)"))
-  ) |>
+    yaxis = list(title = paste0("PC4 (", round(variance_explained[4], 1), "%)"))) |>
   format_plotly()
 ```
 
 # Robust Outlier Detection
+
 Robust outlier detection was applied to PC1-PC4 to identify samples with unusually extreme PCA scores. For each principal component, robust Z-scores were calculated using the median and median absolute deviation (MAD), which are less sensitive to extreme values than the mean and standard deviation.
-Two exploratory thresholds were used to classify samples as potential or unambiguous PCA outliers. These labels are used to prioritise samples for further investigation and do not represent automatic sample exclusion.
+Two exploratory thresholds were used to classify samples as potential or unambiguous PCA outliers.
+
 ```{r robust-outliers}
 potential_cutoff <- qnorm(0.995)
 unambiguous_cutoff <- qnorm(0.9995)
@@ -452,39 +522,44 @@ robust_scores <- pca_data |>
       abs_robust_z >= unambiguous_cutoff ~ "Unambiguous",
       abs_robust_z >= potential_cutoff ~ "Potential",
       TRUE ~ "No"
-    )
-  ) |>
+    )) |>
   ungroup() |>
   left_join(sample_info, by = "run") |>
   mutate(
     hover = paste0(
       "Run: ", run, "<br>Individual: ", individual, "<br>", PC, ": ", round(score, 2),
-      "<br>Robust Z: ", round(robust_z, 2), "<br>Status: ", outlier_status
-    )
-  )
+      "<br>Robust Z: ", round(robust_z, 2), "<br>Status: ", outlier_status))
 ```
 
 ## Robust Z-score Distribution
+
 This plot shows the absolute robust Z-score of each sample across PC1-PC4. Horizontal reference lines indicate the potential and unambiguous outlier thresholds, allowing samples with unusually extreme PCA positions to be identified across multiple principal components.
+
 ```{r robust-z-plot}
 plot_ly(
   data = robust_scores, x = ~PC, y = ~abs_robust_z, type = "scatter", mode = "markers",
   color = ~outlier_status, colors = outlier_colors,
-  text = ~hover, hoverinfo = "text"
-) |>
+  text = ~hover, hoverinfo = "text") |>
   layout(
     xaxis = list(title = "Principal component"),
     yaxis = list(title = "Absolute robust Z-score"),
     shapes = list(
-      list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = potential_cutoff, y1 = potential_cutoff, line = list(dash = "dash")),
-      list(type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = unambiguous_cutoff, y1 = unambiguous_cutoff, line = list(dash = "dot"))
-    )
-  ) |>
+      list(
+        type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = potential_cutoff, y1 = potential_cutoff,
+        line = list(dash = "dash")
+      ),
+      list(
+        type = "line", xref = "paper", x0 = 0, x1 = 1, y0 = unambiguous_cutoff,
+        y1 = unambiguous_cutoff, line = list(dash = "dot")
+      )
+    )) |>
   format_plotly()
 ```
 
 ## Outlier Summary
+
 The outlier summary collapses the PC-specific results to one sample-level classification. Each sample is assigned the most severe status observed across PC1-PC4, and the principal components responsible for the flag are retained for follow-up review.
+
 ```{r outlier-summary}
 sample_outliers <- robust_scores |>
   group_by(run) |>
@@ -514,10 +589,13 @@ reactable(outlier_counts, pagination = FALSE, bordered = TRUE, striped = TRUE, h
 ```
 
 # Flagged Sample Review
+
 Samples identified as potential or unambiguous PCA outliers are reviewed in greater detail using available sample metadata and technical QC metrics. The purpose of this step is to investigate whether unusual PCA positions can be explained by known biological or technical characteristics before considering any sample exclusion.
 
 ## Flagged Samples
+
 The table below lists all samples flagged in the PCA-based robust outlier analysis together with the principal component responsible for the flag, outlier strength, demographic information, and key technical QC metrics.
+
 ```{r flagged-samples}
 flagged_samples <- sample_outliers |>
   dplyr::filter(outlier_status != "No") |>
@@ -557,13 +635,17 @@ reactable(
 ```
 
 # Outlier Association
-Potential associations between PCA outlier status and available biological or technical variables were examined to identify factors that may contribute to the observed sample structure. These analyses are exploratory and are used to generate possible explanations for PCA outliers rather than to establish causal relationships or automatic exclusion criteria.
+
+Potential associations between PCA outlier status and available biological or technical variables were examined to identify factors that may contribute to the observed sample structure.
 
 ## Biological / Sample Metadata {.tabset}
+
 Available sample-level metadata were examined to determine whether PCA outlier status was associated with demographic characteristics.
 
 ### Age by PCA Outlier Status
+
 Age distributions were compared between non-flagged and flagged samples to assess whether PCA outlier status was concentrated within a particular age range.
+
 ```{r age-by-outlier-status}
 age_outlier_data <- sample_outliers |>
   mutate(
@@ -586,7 +668,9 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### Sex and PCA Outlier Status
+
 The proportion of flagged samples was summarised by sex to assess whether PCA outliers were disproportionately represented in one sex group.
+
 ```{r sex-outlier-summary}
 sex_outlier_summary <- sample_outliers |>
   mutate(outlier_binary = if_else(outlier_status == "No", "No", "Flagged")) |>
@@ -603,7 +687,9 @@ reactable(sex_outlier_summary, pagination = FALSE, bordered = TRUE, striped = TR
 ```
 
 ## Technical QC {.tabset}
+
 Technical QC metrics were compared with PCA outlier status and outlier strength to assess whether unusual expression structure could be related to sequencing depth, mapping behaviour, library characteristics, or whole-blood RNA composition.
+
 ```{r qc-association-data}
 qc_metric_labels <- c(
   library_size_input_million = "Input library size (million fragments)",
@@ -621,19 +707,24 @@ qc_association <- sample_outliers |>
     outlier_binary = factor(outlier_binary, levels = c("No", "Flagged"))
   )
 qc_association_long <- qc_association |>
-  dplyr::select(run, individual, disease_state, timepoint, outlier_status, outlier_binary, max_abs_robust_z, all_of(names(qc_metric_labels))) |>
+  dplyr::select(
+    run, individual, disease_state, timepoint, outlier_status, outlier_binary, max_abs_robust_z,
+    all_of(names(qc_metric_labels))
+  ) |>
   pivot_longer(cols = all_of(names(qc_metric_labels)), names_to = "metric", values_to = "value") |>
   mutate(
     metric_label = factor(metric, levels = names(qc_metric_labels), labels = unname(qc_metric_labels)),
     hover = paste0(
       "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
-      "<br>Outlier status: ", outlier_status, "<br>QC value: ", round(value, 2), "<br>Max |robust Z|: ", round(max_abs_robust_z, 2)
-    )
-  )
+      "<br>Outlier status: ", outlier_status, "<br>QC value: ", round(value, 2),
+      "<br>Max |robust Z|: ", round(max_abs_robust_z, 2)
+    ))
 ```
 
 ### QC Metrics by Outlier Status
+
 QC metric distributions were compared between non-flagged and flagged samples. This provides a direct view of whether flagged samples tend to have systematically different technical characteristics from the remainder of the cohort.
+
 ```{r qc-association-boxplots}
 p <- qc_association_long |>
   ggplot(aes(x = outlier_binary, y = value, color = outlier_binary)) +
@@ -646,7 +737,9 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### QC Metrics vs PCA Outlier Strength
+
 Each QC metric was also compared with the maximum absolute robust Z-score to assess whether increasingly extreme PCA positions were associated with increasingly unusual technical measurements.
+
 ```{r qc-vs-robust-z}
 p <- qc_association_long |>
   ggplot(aes(x = value, y = max_abs_robust_z)) +
@@ -661,7 +754,9 @@ format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
 ### QC Association Summary
-The summary table quantifies the exploratory relationships shown above. Median QC values are reported for non-flagged and flagged samples, while Spearman correlation assesses the relationship between each QC metric and PCA outlier strength. Wilcoxon tests compare QC distributions between flagged and non-flagged samples, with Benjamini-Hochberg adjustment applied across metrics.
+
+The summary table quantifies the exploratory relationships shown above. Median QC values are reported for non-flagged and flagged samples.
+
 ```{r qc-association-summary}
 qc_association_summary <- qc_association_long |>
   group_by(metric, metric_label) |>
@@ -694,16 +789,17 @@ reactable(
     `Spearman rho` = colDef(name = "Spearman rho"),
     `Wilcoxon p` = colDef(name = "Wilcoxon p"),
     FDR = colDef(name = "BH-adjusted p")
-  )
-)
+  ))
 ```
 
 # Unwanted Variation Assessment
+
 Unwanted variation was assessed using RUVg to determine whether latent technical or sample-level factors could explain part of the expression structure observed during PCA. Particular attention was given to samples previously identified as potential or unambiguous PCA outliers.
-RUV is used here as an exploratory sensitivity analysis rather than as a procedure to force all samples into a single cluster. The aim is to assess how sample structure changes after modelling increasing numbers of unwanted factors while preserving plausible biological variation.
 
 ## RUV Setup
+
 The filtered gene-level expression matrix used for the previous PCA assessment was retained for the RUV analysis so that the same genes and samples were evaluated consistently. Sample metadata were aligned to the expression matrix, and the longitudinal pairing structure was retained for the first-pass expression analysis.
+
 ```{r ruv-setup}
 ruv_counts <- gene_counts[keep, , drop = FALSE]
 ruv_pheno <- as.data.frame(sample_info)
@@ -717,20 +813,25 @@ ruv_sample_colors <- timepoint_colors[as.character(ruv_pheno$timepoint)]
 ```
 
 ## RLE Before TMM Normalization
-Relative log expression (RLE) distributions were examined before between-library normalisation to assess sample-level shifts in global expression. Large differences in sample medians or unusually broad distributions may indicate systematic variation that should be considered before downstream analysis.
+
+Relative log expression (RLE) distributions were examined before between-library normalisation to assess sample-level shifts in global expression.
+
 ```{r ruv-rle-before}
 plotRLE(ruv_counts, outline = FALSE, ylim = c(-4, 4), col = ruv_sample_colors)
 ```
 
 ## PCA Before TMM Normalization
-PCA was examined before TMM normalisation to provide a reference view of the major sample-level expression structure before between-library scaling was applied. This allows subsequent changes after TMM and RUV adjustment to be interpreted relative to the original expression structure.
+
+PCA was examined before TMM normalisation to provide a reference view of the major sample-level expression structure before between-library scaling was applied.
+
 ```{r ruv-pca-before}
 plotPCA(ruv_counts, col = ruv_sample_colors, cex = 1.2)
 ```
 
 ## TMM Normalization
-TMM (Trimmed Mean of M-values) normalisation was applied to account for between-library differences in sequencing depth and RNA composition. This step adjusts library scaling factors before unwanted variation is modelled with RUVg.
-TMM addresses global library composition differences but does not directly remove latent technical or sample-level factors. PCA and RLE are therefore reassessed after TMM before proceeding to RUVg.
+
+TMM (Trimmed Mean of M-values) normalisation was applied to account for between-library differences in sequencing depth and RNA composition.
+
 ```{r ruv-tmm}
 ruv_y <- DGEList(counts = ruv_counts)
 ruv_y <- normLibSizes(ruv_y, method = "TMM")
@@ -739,20 +840,25 @@ ruv_tmm_logcpm <- cpm(ruv_y, log = TRUE, prior.count = 1, normalized.lib.sizes =
 ```
 
 ## RLE After TMM Normalization
-RLE distributions were re-examined after TMM normalisation to assess whether between-library scaling reduced sample-level shifts in global expression. Improvement is expected when sample medians become more consistently centred and the overall spread becomes more comparable across samples.
+
+RLE distributions were re-examined after TMM normalisation to assess whether between-library scaling reduced sample-level shifts in global expression.
+
 ```{r ruv-rle-after-tmm}
 plotRLE(ruv_tmm_cpm, outline = FALSE, ylim = c(-4, 4), col = ruv_sample_colors)
 ```
 
 ## PCA After TMM Normalization
-PCA was reassessed after TMM normalisation to determine which major expression patterns remained after between-library scaling. Comparison with the pre-TMM PCA helps distinguish variation attributable to library composition from structure that persists and may reflect other technical or biological factors.
+
+PCA was reassessed after TMM normalisation to determine which major expression patterns remained after between-library scaling.
+
 ```{r ruv-pca-after-tmm}
 plotPCA(ruv_tmm_logcpm, isLog = TRUE, col = ruv_sample_colors, cex = 1.2)
 ```
 
 ## First-pass edgeR Analysis
+
 A first-pass edgeR analysis was performed to rank genes for empirical negative-control selection. The model accounts for individual identity and longitudinal structure so that genes showing the strongest evidence of timepoint- or case-associated change can be separated from genes used to estimate unwanted variation.
-This analysis is used only for empirical control-gene selection and does not represent the final differential expression analysis.
+
 ```{r ruv-empirical-control-ranking}
 control_design <- model.matrix(~ individual + timepoint + case_followup, data = ruv_pheno)
 control_fit <- glmQLFit(ruv_y, design = control_design, legacy = FALSE)
@@ -765,9 +871,10 @@ control_ranking <- topTags(control_test, n = Inf, sort.by = "PValue")$table |>
 ```
 
 ## Empirical Control Genes
+
 Two empirical control-gene definitions were evaluated to assess the sensitivity of RUVg to control selection.
 The first follows the RUVSeq example by excluding the 5,000 most significant genes from the first-pass ranking and using all remaining genes as empirical controls. The second uses the least significant 50% of ranked genes as a more conservative control set.
-The same RUVg analysis is performed with both control sets so that their effects on PCA structure can be compared directly.
+
 ```{r ruv-empirical-controls}
 # Strategy 1: exclude the 5,000 most significant genes
 top5000_genes <- control_ranking |>
@@ -790,8 +897,10 @@ tibble(
 ```
 
 ## RUVg Across k = 1 to 10
+
 RUVg was evaluated across `k = 1-10` for both empirical control-gene definitions. All other analysis settings were held constant so that differences between the resulting PCA structures reflect sensitivity to control-gene selection.
 For each control strategy, increasing values of `k` estimate increasing numbers of latent unwanted factors. The aim is to assess whether the overall RUVg sensitivity pattern is consistent across alternative empirical control definitions.
+
 ```{r ruvg-fits}
 ruv_k_values <- 1:10
 ruv_fits <- purrr::map(control_sets, function(controls) {
@@ -801,8 +910,10 @@ ruv_fits <- purrr::map(control_sets, function(controls) {
 ```
 
 ## PCA Across Empirical Control Strategies
+
 PCA was recalculated for each combination of empirical control strategy and `k`. The two control-gene definitions are shown separately below to assess whether the main RUVg sensitivity pattern is robust to control selection.
-Interpretation focuses on overall sample structure, the position of previously flagged samples, stability across neighbouring values of `k`, and preservation of plausible biological variation. Lower PC1 or PC2 variance is not interpreted as automatically better.
+Interpretation focuses on overall sample structure, the position of previously flagged samples, stability across neighbouring values of `k`, and preservation of plausible biological variation.
+
 ```{r ruvg-pca-data}
 ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
   purrr::map_dfr(ruv_k_values, function(k) {
@@ -822,7 +933,8 @@ ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
     hover = paste0(
       "Run: ", run, "<br>Individual: ", individual, "<br>Group: ", disease_state, "<br>Timepoint: ", timepoint,
       "<br>Control strategy: ", control_method, "<br>Original outlier status: ", outlier_status, "<br>k: ", k,
-      "<br>PC1: ", round(PC1, 2), " (", round(pc1_variance, 1), "%)", "<br>PC2: ", round(PC2, 2), " (", round(pc2_variance, 1), "%)"
+      "<br>PC1: ", round(PC1, 2), " (", round(pc1_variance, 1), "%)",
+      "<br>PC2: ", round(PC2, 2), " (", round(pc2_variance, 1), "%)"
     ))
 plot_ruv_pca_tabs <- function(control_id_selected) {
   for (k_value in ruv_k_values) {
@@ -846,19 +958,25 @@ plot_ruv_pca_tabs <- function(control_id_selected) {
 ```
 
 ### Exclude Top 5000 {.tabset}
+
 This strategy excludes the 5,000 genes with the strongest evidence of expression change in the first-pass edgeR analysis and uses all remaining genes as empirical controls.
+
 ```{r ruvg-pca-exclude-top5000, results = "asis"}
 plot_ruv_pca_tabs("exclude_top5000")
 ```
 
 ### Bottom 50% {.tabset}
+
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
+
 ```{r ruvg-pca-bottom50, results = "asis"}
 plot_ruv_pca_tabs("bottom50")
 ```
 
 ### Variance Explained Comparison
-PC1 and PC2 variance explained are compared across both empirical control strategies and all values of `k`. Similar trajectories would indicate that the overall RUVg sensitivity pattern is relatively robust to the definition of empirical control genes.
+
+PC1 and PC2 variance explained are compared across both empirical control strategies and all values of `k`.
+
 ```{r ruv-control-variance-comparison}
 ruv_variance_summary <- ruv_pca_data |>
   distinct(control_method, k, pc1_variance, pc2_variance) |>
@@ -876,13 +994,6 @@ p <- ruv_variance_summary |>
 format_plotly(ggplotly(p, tooltip = "text"))
 ```
 
-# Analysis Notes
-No samples have been excluded on the basis of the current PCA, robust outlier, or RUV analyses.
-Samples flagged during the exploratory PCA assessment remain in the dataset while their technical and biological characteristics are investigated. RUVg is being used to assess whether latent unwanted variation can explain part of the observed sample structure.
-The final value of `k` has not yet been selected. Selection will be based on the combined PCA and RLE sensitivity analyses, with particular attention to previously flagged samples, stability across neighbouring values of `k`, and preservation of plausible biological structure.
-Downstream differential expression and network analyses will be performed after the unwanted-variation assessment has been finalised.
-
-# Session Information
-```{r session-info}
+```{r session-info, echo = FALSE}
 sessionInfo()
 ```
