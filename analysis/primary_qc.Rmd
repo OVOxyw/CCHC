@@ -991,7 +991,7 @@ plot_ruv_strategy <- function(control_id_selected) {
     geom_point(aes(color = disease_state, shape = timepoint), size = 2.4, alpha = 0.85, stroke = 0.8) +
     scale_color_manual(values = disease_colors, drop = FALSE) +
     scale_shape_manual(values = timepoint_shapes, drop = FALSE) +
-    facet_wrap(~ facet_label, ncol = 3) +
+    facet_wrap(~ facet_label, ncol = 2) +
     coord_cartesian(xlim = ruv_pc1_lim, ylim = ruv_pc2_lim) +
     labs(x = "PC1 score", y = "PC2 score", color = "Disease state", shape = "Timepoint") +
     cchc_theme()
@@ -1002,7 +1002,7 @@ plot_ruv_strategy <- function(control_id_selected) {
 
 This strategy excludes the 5,000 genes with the strongest evidence of longitudinal or case-associated expression change in the first-pass edgeR analysis and uses the remaining genes as empirical controls.
 
-```{r ruvg-pca-exclude-top5000, fig.width = 13, fig.height = 12}
+```{r ruvg-pca-exclude-top5000, fig.width = 13, fig.height = 18}
 plot_ruv_strategy("exclude_top5000")
 ```
 
@@ -1010,7 +1010,7 @@ plot_ruv_strategy("exclude_top5000")
 
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
 
-```{r ruvg-pca-bottom50, fig.width = 13, fig.height = 12}
+```{r ruvg-pca-bottom50, fig.width = 13, fig.height = 18}
 plot_ruv_strategy("bottom50")
 ```
 
