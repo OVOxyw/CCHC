@@ -465,25 +465,56 @@ plot_ly(
 PC1 and PC2 represent the two largest directions of variation in the expression matrix. Samples are coloured by disease state and distinguished by timepoint, while paired samples from the same individual are connected by grey lines.
 
 ```{r pca-pc1-pc2}
-p <- pca_data |>
-  ggplot(aes(x = PC1, y = PC2)) +
-  geom_line(aes(group = individual), color = "grey70", linewidth = 0.5, alpha = 0.5) +
-  geom_point(
-    aes(
-      color = disease_state, shape = timepoint,
-      text = paste0(hover, "<br>PC1: ", round(PC1, 2), "<br>PC2: ", round(PC2, 2))
-    ),
-    size = 2.5, alpha = 0.85
-  ) +
-  scale_color_manual(values = disease_colors) +
-  scale_shape_manual(values = timepoint_shapes) +
-  labs(
-    x = paste0("PC1 (", round(variance_explained[1], 1), "%)"),
-    y = paste0("PC2 (", round(variance_explained[2], 1), "%)"),
-    color = "Disease state", shape = "Timepoint"
-  ) +
-  cchc_theme()
-format_plotly(ggplotly(p, tooltip = "text"))
+plot_pca_pair <- function(pc_x, pc_y) {
+  pc_index <- as.integer(str_remove(c(pc_x, pc_y), "PC"))
+  plot_data <- pca_data |>
+    mutate(
+      x = .data[[pc_x]], y = .data[[pc_y]],
+      text = paste0(hover, "<br>", pc_x, ": ", round(x, 2), "<br>", pc_y, ": ", round(y, 2))
+    )
+  ## Control points are drawn first so that T2D case points sit on top
+  p <- ggplot(plot_data, aes(x, y)) +
+    geom_line(aes(group = individual), color = "grey70", linewidth = 0.5, alpha = 0.5) +
+    geom_point(
+      aes(color = disease_state, shape = timepoint, text = text),
+      data = dplyr::filter(plot_data, disease_state == "control"), size = 2.5, alpha = 0.85
+    ) +
+    geom_point(
+      aes(color = disease_state, shape = timepoint, text = text),
+      data = dplyr::filter(plot_data, disease_state == "T2D case"), size = 2.5, alpha = 0.85
+    ) +
+    scale_color_manual(values = disease_colors) +
+    scale_shape_manual(values = timepoint_shapes) +
+    labs(
+      x = paste0(pc_x, " (", round(variance_explained[pc_index[1]], 1), "%)"),
+      y = paste0(pc_y, " (", round(variance_explained[pc_index[2]], 1), "%)")
+    ) +
+    cchc_theme()
+  ## Replace the combined (disease state, timepoint) legend with two separate legends
+  legend_key <- tibble(
+    name = c(names(disease_colors), names(timepoint_shapes)),
+    group = rep(c("Disease state", "Timepoint"), c(length(disease_colors), length(timepoint_shapes))),
+    color = c(unname(disease_colors), rep("grey40", length(timepoint_shapes))),
+    symbol = c(rep("circle", length(disease_colors)), "circle", "circle-open")
+  )
+  p <- plotly_build(ggplotly(p, tooltip = "text"))
+  p$x$data <- lapply(p$x$data, function(tr) modifyList(tr, list(showlegend = FALSE)))
+  legend_traces <- lapply(seq_len(nrow(legend_key)), function(i) {
+    list(
+      type = "scatter", mode = "markers", x = I(NA_real_), y = I(NA_real_), hoverinfo = "skip",
+      name = legend_key$name[i], legendgroup = legend_key$group[i],
+      legendgrouptitle = list(text = legend_key$group[i]), showlegend = TRUE,
+      marker = list(color = legend_key$color[i], symbol = legend_key$symbol[i], size = 9)
+    )
+  })
+  p$x$data <- c(p$x$data, legend_traces)
+  p$x$layout$legend <- modifyList(
+    p$x$layout$legend,
+    list(title = list(text = ""), itemclick = FALSE, itemdoubleclick = FALSE, tracegroupgap = 12)
+  )
+  format_plotly(p)
+}
+plot_pca_pair("PC1", "PC2")
 ```
 
 #### PC3 vs PC4
@@ -491,25 +522,7 @@ format_plotly(ggplotly(p, tooltip = "text"))
 PC3 and PC4 were also examined because sample-specific or technical variation may not be restricted to the first two principal components. The same disease-state, timepoint, and paired-sample visual encoding is retained for consistency.
 
 ```{r pca-pc3-pc4}
-p <- pca_data |>
-  ggplot(aes(x = PC3, y = PC4)) +
-  geom_line(aes(group = individual), color = "grey70", linewidth = 0.5, alpha = 0.5) +
-  geom_point(
-    aes(
-      color = disease_state, shape = timepoint,
-      text = paste0(hover, "<br>PC3: ", round(PC3, 2), "<br>PC4: ", round(PC4, 2))
-    ),
-    size = 2.5, alpha = 0.85
-  ) +
-  scale_color_manual(values = disease_colors) +
-  scale_shape_manual(values = timepoint_shapes) +
-  labs(
-    x = paste0("PC3 (", round(variance_explained[3], 1), "%)"),
-    y = paste0("PC4 (", round(variance_explained[4], 1), "%)"),
-    color = "Disease state", shape = "Timepoint"
-  ) +
-  cchc_theme()
-format_plotly(ggplotly(p, tooltip = "text"))
+plot_pca_pair("PC3", "PC4")
 ```
 
 # Robust Outlier Detection
@@ -953,20 +966,11 @@ ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
 ```
 
 ```{r ruvg-pca-function}
-plot_ruv_strategy <- function(control_id_selected) {
+plot_ruv_pca <- function(control_id_selected, k_value) {
   plot_data <- ruv_pca_data |>
-    dplyr::filter(control_id == control_id_selected) |>
-    mutate(
-      facet_label = paste0(
-        "k = ", k, "\nPC1 ", round(pc1_variance, 1), "%", " | PC2 ", round(pc2_variance, 1), "%"
-      )
-    )
-  facet_levels <- plot_data |>
-    distinct(k, facet_label) |>
-    arrange(k) |>
-    pull(facet_label)
-  plot_data <- plot_data |>
-    mutate(facet_label = factor(facet_label, levels = facet_levels))
+    dplyr::filter(control_id == control_id_selected, k == k_value)
+  pc1_var <- unique(plot_data$pc1_variance)
+  pc2_var <- unique(plot_data$pc2_variance)
   ggplot(plot_data, aes(x = PC1, y = PC2)) +
     stat_ellipse(
       aes(group = timepoint, linetype = timepoint),
@@ -975,8 +979,11 @@ plot_ruv_strategy <- function(control_id_selected) {
     geom_point(aes(color = disease_state, shape = timepoint), size = 2.4, alpha = 0.85, stroke = 0.8) +
     scale_color_manual(values = disease_colors, drop = FALSE) +
     scale_shape_manual(values = timepoint_shapes, drop = FALSE) +
-    facet_wrap(~ facet_label, ncol = 5) +
-    labs(x = "PC1 score", y = "PC2 score", color = "Disease state", shape = "Timepoint") +
+    labs(
+      x = paste0("PC1 (", round(pc1_var, 1), "%)"),
+      y = paste0("PC2 (", round(pc2_var, 1), "%)"),
+      color = "Disease state", shape = "Timepoint"
+    ) +
     cchc_theme()
 }
 ```
@@ -985,16 +992,24 @@ plot_ruv_strategy <- function(control_id_selected) {
 
 This strategy excludes the 5,000 genes with the strongest evidence of longitudinal or case-associated expression change in the first-pass edgeR analysis and uses the remaining genes as empirical controls.
 
-```{r ruvg-pca-exclude-top5000, fig.width = 13, fig.height = 8}
-plot_ruv_strategy("exclude_top5000")
+```{r ruvg-pca-exclude-top5000, results = "asis", fig.width = 9, fig.height = 7}
+for (k_value in ruv_k_values) {
+  cat("\n\n#### k = ", k_value, "\n\n", sep = "")
+  print(plot_ruv_pca("exclude_top5000", k_value))
+  cat("\n\n")
+}
 ```
 
 ### Bottom 50%
 
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
 
-```{r ruvg-pca-bottom50, fig.width = 13, fig.height = 8}
-plot_ruv_strategy("bottom50")
+```{r ruvg-pca-bottom50, results = "asis", fig.width = 9, fig.height = 7}
+for (k_value in ruv_k_values) {
+  cat("\n\n#### k = ", k_value, "\n\n", sep = "")
+  print(plot_ruv_pca("bottom50", k_value))
+  cat("\n\n")
+}
 ```
 
 # Session Information
