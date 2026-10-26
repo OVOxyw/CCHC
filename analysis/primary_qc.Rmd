@@ -966,11 +966,23 @@ ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
 ```
 
 ```{r ruvg-pca-function}
-plot_ruv_pca <- function(control_id_selected, k_value) {
+## Fixed axis limits shared by every strategy and k, centred on zero
+ruv_pc1_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC1))
+ruv_pc2_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC2))
+plot_ruv_strategy <- function(control_id_selected) {
   plot_data <- ruv_pca_data |>
-    dplyr::filter(control_id == control_id_selected, k == k_value)
-  pc1_var <- unique(plot_data$pc1_variance)
-  pc2_var <- unique(plot_data$pc2_variance)
+    dplyr::filter(control_id == control_id_selected) |>
+    mutate(
+      facet_label = paste0(
+        "k = ", k, "\nPC1 ", round(pc1_variance, 1), "%", " | PC2 ", round(pc2_variance, 1), "%"
+      )
+    )
+  facet_levels <- plot_data |>
+    distinct(k, facet_label) |>
+    arrange(k) |>
+    pull(facet_label)
+  plot_data <- plot_data |>
+    mutate(facet_label = factor(facet_label, levels = facet_levels))
   ggplot(plot_data, aes(x = PC1, y = PC2)) +
     stat_ellipse(
       aes(group = timepoint, linetype = timepoint),
@@ -979,37 +991,27 @@ plot_ruv_pca <- function(control_id_selected, k_value) {
     geom_point(aes(color = disease_state, shape = timepoint), size = 2.4, alpha = 0.85, stroke = 0.8) +
     scale_color_manual(values = disease_colors, drop = FALSE) +
     scale_shape_manual(values = timepoint_shapes, drop = FALSE) +
-    labs(
-      x = paste0("PC1 (", round(pc1_var, 1), "%)"),
-      y = paste0("PC2 (", round(pc2_var, 1), "%)"),
-      color = "Disease state", shape = "Timepoint"
-    ) +
+    facet_wrap(~ facet_label, ncol = 5) +
+    coord_cartesian(xlim = ruv_pc1_lim, ylim = ruv_pc2_lim) +
+    labs(x = "PC1 score", y = "PC2 score", color = "Disease state", shape = "Timepoint") +
     cchc_theme()
 }
 ```
 
-### Exclude Top 5000 {.tabset}
+### Exclude Top 5000
 
 This strategy excludes the 5,000 genes with the strongest evidence of longitudinal or case-associated expression change in the first-pass edgeR analysis and uses the remaining genes as empirical controls.
 
-```{r ruvg-pca-exclude-top5000, results = "asis", fig.width = 9, fig.height = 7}
-for (k_value in ruv_k_values) {
-  cat("\n\n#### k = ", k_value, "\n\n", sep = "")
-  print(plot_ruv_pca("exclude_top5000", k_value))
-  cat("\n\n")
-}
+```{r ruvg-pca-exclude-top5000, fig.width = 13, fig.height = 8}
+plot_ruv_strategy("exclude_top5000")
 ```
 
-### Bottom 50% {.tabset}
+### Bottom 50%
 
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
 
-```{r ruvg-pca-bottom50, results = "asis", fig.width = 9, fig.height = 7}
-for (k_value in ruv_k_values) {
-  cat("\n\n#### k = ", k_value, "\n\n", sep = "")
-  print(plot_ruv_pca("bottom50", k_value))
-  cat("\n\n")
-}
+```{r ruvg-pca-bottom50, fig.width = 13, fig.height = 8}
+plot_ruv_strategy("bottom50")
 ```
 
 # Session Information
