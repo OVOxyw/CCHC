@@ -973,6 +973,8 @@ This strategy uses the least significant 50% of genes from the first-pass edgeR 
 plot_ruv_pca_tabs("bottom50")
 ```
 
+# Session Information
+
 ```{r session-info, echo = FALSE}
 sessionInfo()
 ```
