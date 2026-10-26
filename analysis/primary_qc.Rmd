@@ -973,27 +973,6 @@ This strategy uses the least significant 50% of genes from the first-pass edgeR 
 plot_ruv_pca_tabs("bottom50")
 ```
 
-### Variance Explained Comparison
-
-PC1 and PC2 variance explained are compared across both empirical control strategies and all values of `k`.
-
-```{r ruv-control-variance-comparison}
-ruv_variance_summary <- ruv_pca_data |>
-  distinct(control_method, k, pc1_variance, pc2_variance) |>
-  pivot_longer(cols = c(pc1_variance, pc2_variance), names_to = "PC", values_to = "variance") |>
-  mutate(
-    PC = recode(PC, pc1_variance = "PC1", pc2_variance = "PC2"),
-    hover = paste0("Control strategy: ", control_method, "<br>k: ", k, "<br>", PC, ": ", round(variance, 2), "%")
-  )
-p <- ruv_variance_summary |>
-  ggplot(aes(x = k, y = variance, color = control_method, group = control_method, text = hover)) +
-  geom_line(linewidth = 0.8) +
-  geom_point(size = 2.2) +
-  facet_wrap(~ PC, ncol = 1, scales = "free_y") +
-  labs(x = "Number of unwanted factors (k)", y = "Variance explained (%)", color = "Control strategy")
-format_plotly(ggplotly(p, tooltip = "text"))
-```
-
 ```{r session-info, echo = FALSE}
 sessionInfo()
 ```
