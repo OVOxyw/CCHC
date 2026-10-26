@@ -988,7 +988,7 @@ plot_ruv_pca <- function(control_id_selected, k_value) {
 }
 ```
 
-### Exclude Top 5000
+### Exclude Top 5000 {.tabset}
 
 This strategy excludes the 5,000 genes with the strongest evidence of longitudinal or case-associated expression change in the first-pass edgeR analysis and uses the remaining genes as empirical controls.
 
@@ -1000,7 +1000,7 @@ for (k_value in ruv_k_values) {
 }
 ```
 
-### Bottom 50%
+### Bottom 50% {.tabset}
 
 This strategy uses the least significant 50% of genes from the first-pass edgeR ranking as empirical controls.
 
