@@ -37,14 +37,8 @@ rule bwa_index_hbrna:
 rule sample_first_million:
     input:
         os.path.join(raw_path, "{accession}_{read}.fastq.gz")
-
     output:
-        temp(
-            os.path.join(
-                contamination_tmp_path,
-                "{accession}_{read}.firstmillion.fastq"
-            )
-        )
+        temp(os.path.join(contamination_tmp_path, "{accession}_{read}.firstmillion.fastq"))
     wildcard_constraints:
         read = "1|2"
     threads:
@@ -58,26 +52,14 @@ rule sample_first_million:
         set -o pipefail
         test "$(wc -l < {output})" -eq 4000000
         """
-    
+
 rule rrna_flagstat:
     input:
-        reads = os.path.join(
-            contamination_tmp_path,
-            "{accession}_{read}.firstmillion.fastq"
-        ),
+        reads = os.path.join(contamination_tmp_path, "{accession}_{read}.firstmillion.fastq"),
         ref = rrna_ref,
-        index = [
-            rrna_ref + ".amb",
-            rrna_ref + ".ann",
-            rrna_ref + ".bwt",
-            rrna_ref + ".pac",
-            rrna_ref + ".sa"
-        ]
+        index = [rrna_ref + ".amb", rrna_ref + ".ann", rrna_ref + ".bwt", rrna_ref + ".pac", rrna_ref + ".sa"]
     output:
-        os.path.join(
-            contamination_qc_path,
-            "{accession}_{read}.rrna.flagstat"
-        )
+        os.path.join(contamination_qc_path, "{accession}_{read}.rrna.flagstat")
     conda:
         "../envs/bwa_samtools.yml"
     threads:
@@ -90,26 +72,14 @@ rule rrna_flagstat:
         | samtools view -hu - 2>> {log} \
         | samtools flagstat - > {output} 2>> {log}
         """
-        
+
 rule hbrna_flagstat:
     input:
-        reads = os.path.join(
-            contamination_tmp_path,
-            "{accession}_{read}.firstmillion.fastq"
-        ),
+        reads = os.path.join(contamination_tmp_path, "{accession}_{read}.firstmillion.fastq"),
         ref = hbrna_ref,
-        index = [
-            hbrna_ref + ".amb",
-            hbrna_ref + ".ann",
-            hbrna_ref + ".bwt",
-            hbrna_ref + ".pac",
-            hbrna_ref + ".sa"
-        ]
+        index = [hbrna_ref + ".amb", hbrna_ref + ".ann", hbrna_ref + ".bwt", hbrna_ref + ".pac", hbrna_ref + ".sa"]
     output:
-        os.path.join(
-            contamination_qc_path,
-            "{accession}_{read}.hbrna.flagstat"
-        )
+        os.path.join(contamination_qc_path, "{accession}_{read}.hbrna.flagstat")
     conda:
         "../envs/bwa_samtools.yml"
     threads:

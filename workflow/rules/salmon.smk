@@ -4,22 +4,9 @@ rule salmon_quant:
         r2 = os.path.join(trimmed_path, "{accession}_2.fastq.gz"),
         index = salmon_index
     output:
-        quant = os.path.join(
-            quant_path,
-            "{accession}",
-            "quant.sf"
-        ),
-        lib = os.path.join(
-            quant_path,
-            "{accession}",
-            "lib_format_counts.json"
-        ),
-        meta = os.path.join(
-            quant_path,
-            "{accession}",
-            "aux_info",
-            "meta_info.json"
-        )
+        quant = os.path.join(quant_path, "{accession}", "quant.sf"),
+        lib = os.path.join(quant_path, "{accession}", "lib_format_counts.json"),
+        meta = os.path.join(quant_path, "{accession}", "aux_info", "meta_info.json")
     log:
         "workflow/logs/salmon/{accession}.log"
     threads:

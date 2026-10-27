@@ -18,6 +18,8 @@ ref_release = config["reference"]["release"]
 genome = config["reference"]["genome"]
 transcriptome = config["reference"]["transcriptome"]
 annotation = config["reference"]["annotation"]
+tx2gene = config["reference"]["tx2gene"]
+tximport_path = config["paths"]["tximport"]
 salmon_index = config["reference"]["salmon_index"]
 gentrome = config["reference"]["gentrome"]
 decoys = config["reference"]["decoys"]
@@ -32,18 +34,10 @@ rule all:
     input:
         expand(os.path.join(quant_path, "{accession}", "quant.sf"), accession=runs),
         os.path.join(qc_summary_path, "sample_qc_summary.tsv"),
-        os.path.join(qc_path, "multiqc.html")
-
-rule download_all:
-    input:
-        expand(
-            os.path.join(raw_path, "{accession}_1.fastq.gz"),
-            accession=runs
-        ),
-        expand(
-            os.path.join(raw_path, "{accession}_2.fastq.gz"),
-            accession=runs
-        )
+        os.path.join(qc_path, "multiqc.html"),
+        os.path.join(tximport_path, "tximport_gene.rds"),
+        os.path.join(tximport_path, "tximport_gene_lengthscaled.rds"),
+        os.path.join(tximport_path, "tximport_transcript.rds")
 
 include: "rules/sra_download.smk"
 include: "rules/fastp.smk"
@@ -52,3 +46,4 @@ include: "rules/salmon.smk"
 include: "rules/contamination_qc.smk"
 include: "rules/qc_summary.smk"
 include: "rules/multiqc.smk"
+include: "rules/tximport.smk"

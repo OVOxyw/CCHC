@@ -58,14 +58,13 @@ rule make_gentrome:
     input:
         transcriptome = transcriptome,
         genome = genome
-
     output:
         gentrome = gentrome
     log:
         "workflow/logs/reference/make_gentrome.log"
     shell:
         "cat {input.transcriptome} {input.genome} > {output.gentrome} 2> {log}"
-        
+
 rule salmon_index:
     input:
         sequences = gentrome,
@@ -84,3 +83,18 @@ rule salmon_index:
         "workflow/logs/reference/salmon_index.log"
     wrapper:
         "v9.17.0/bio/salmon/index"
+
+rule make_tx2gene:
+    input:
+        annotation = annotation
+    output:
+        tx2gene = tx2gene
+    conda:
+        "../envs/tximport.yml"
+    resources:
+        mem_mb = 8000,
+        runtime = 20
+    log:
+        "workflow/logs/reference/make_tx2gene.log"
+    script:
+        "../scripts/build_tx2gene.R"

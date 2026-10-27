@@ -7,7 +7,7 @@ rule sra_download:
     conda:
         "../envs/sra.yml"
     params:
-        extra = config["params"]["sra_download"]["extra"]  
+        extra = config["params"]["sra_download"]["extra"]
     threads:
         2
     localrule: True
