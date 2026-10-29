@@ -10,6 +10,11 @@ workflow/logs/
 # Generated fastp reports
 output/fastp/
 
+# Local R packages and Pandoc
+tools/
+.Rhistory
+.RData
+
 # Temporary files
 *.tmp
 .DS_Store
