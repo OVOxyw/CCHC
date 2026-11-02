@@ -1,0 +1,220 @@
+---
+title: "Differential Gene Expression Analysis"
+date: "`r format(Sys.Date(), '%d %B, %Y')`"
+output:
+  html_document:
+    toc: yes
+    toc_float: yes
+    code_folding: hide
+    theme: sandstone
+---
+
+```{r setup, echo = FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE, fig.width = 10, fig.height = 7, fig.align = "center")
+```
+
+```{r packages-and-settings}
+library(tidyverse)
+library(reactable)
+library(edgeR)
+library(RUVSeq)
+disease_colors <- c("control" = "#0072B2", "T2D case" = "#D55E00")
+timepoint_colors <- c("baseline" = "#009E73", "follow-up" = "#CC79A7")
+timepoint_shapes <- c("baseline" = 19, "follow-up" = 21)
+cchc_theme <- function() {
+  theme_bw(base_size = 12) +
+    theme(plot.title = element_text(face = "bold"),
+      axis.title = element_text(face = "bold"),
+      strip.text = element_text(face = "bold"),
+      legend.position = "top",
+      panel.grid.minor = element_blank())}
+theme_set(cchc_theme())
+```
+
+```{r load-data}
+sample_metadata <- read_csv("../config/PRJNA762935.csv", show_col_types = FALSE) |>
+  dplyr::select(run = Run, age = AGE, sex)
+sample_info <- read_tsv("../config/samples.tsv", show_col_types = FALSE) |>
+  left_join(sample_metadata, by = "run")
+stopifnot(!anyDuplicated(sample_info$run), !anyDuplicated(sample_metadata$run),
+  all(sample_info$run %in% sample_metadata$run))
+txi <- readRDS("../data/tximport/tximport_gene.rds")
+txi_ruv <- readRDS("../data/tximport/tximport_gene_lengthscaled.rds")
+stopifnot(ncol(txi$counts) == nrow(sample_info), ncol(txi_ruv$counts) == nrow(sample_info))
+for (assay_name in intersect(c("counts", "abundance", "length"), names(txi))) {
+  colnames(txi[[assay_name]]) <- sample_info$run}
+for (assay_name in intersect(c("counts", "abundance", "length"), names(txi_ruv))) {
+  colnames(txi_ruv[[assay_name]]) <- sample_info$run}
+gene_counts <- txi$counts
+stopifnot(identical(colnames(gene_counts), sample_info$run),
+  identical(colnames(txi_ruv$counts), sample_info$run),
+  identical(rownames(txi_ruv$counts), rownames(gene_counts)))
+```
+
+# Gene Expression Filtering
+
+Filtering used the length-scaled gene counts (`countsFromAbundance = "lengthScaledTPM"`). Lowly expressed genes were removed with edgeR's `filterByExpr()`, keeping genes with a CPM of about 1 in at least as many samples as the smallest disease state by timepoint group.
+
+```{r cpm-filtering}
+# The four groups are defined by disease state and timepoint
+# The smallest group contains 25 samples. We use this as the minimum sample requirement.
+group <- interaction(sample_info$disease_state, sample_info$timepoint, drop = TRUE)
+y <- DGEList(counts = txi_ruv$counts, group = group)
+min_samples <- min(table(group))
+min_count <- median(y$samples$lib.size) / 1e6
+keep <- filterByExpr(y, group = group, min.count = min_count, min.prop = 1)
+y_filtered <- y[keep, , keep.lib.sizes = TRUE]
+filter_summary <- tibble(Metric = c("Genes before filtering", "Approximate CPM threshold", "Minimum group size",
+    "Genes after filtering", "Genes removed"),
+  Value = c(nrow(y), 1, min_samples, sum(keep), sum(!keep)))
+reactable(filter_summary, pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
+```
+
+## Expression Distribution Before and After Filtering
+
+logCPM distributions before and after filtering. Each line is one sample, coloured by disease state with line type showing timepoint.
+
+```{r cpm-filtering-plots}
+get_cpm_density <- function(dge, label) {
+  log_cpm <- cpm(dge, log = TRUE, normalized.lib.sizes = FALSE)
+  purrr::map_dfr(seq_len(ncol(log_cpm)), function(i) {
+    d <- density(log_cpm[, i], n = 512)
+    tibble(run = colnames(log_cpm)[i], logCPM = d$x, density = d$y, filtering = label)
+  })}
+density_data <- bind_rows(get_cpm_density(y, "Before filtering"), get_cpm_density(y_filtered, "After filtering")) |>
+  left_join(sample_info |> dplyr::select(run, disease_state, timepoint), by = "run") |>
+  mutate(filtering = factor(filtering, levels = c("Before filtering", "After filtering")))
+p <- ggplot(density_data, aes(x = logCPM, y = density, group = run, color = disease_state, linetype = timepoint)) +
+  geom_line(alpha = 0.4, linewidth = 0.5) +
+  facet_wrap(~ filtering, nrow = 1) +
+  scale_color_manual(values = disease_colors) +
+  scale_linetype_manual(values = c("baseline" = "solid", "follow-up" = "dashed")) +
+  labs(x = "log2 CPM", y = "Density", color = "Disease state", linetype = "Timepoint")
+p
+```
+
+# Unwanted Variation Assessment
+
+## RUV Setup
+
+TMM normalisation factors were calculated for the filtered genes, and logCPM was recalculated from the TMM-adjusted library sizes as input to RUVg. Baseline and control were set as the reference levels for timepoint and disease state.
+
+```{r ruv-setup}
+ruv_pheno <- as.data.frame(sample_info)
+rownames(ruv_pheno) <- ruv_pheno$run
+ruv_pheno$individual <- factor(ruv_pheno$individual)
+ruv_pheno$timepoint <- relevel(factor(ruv_pheno$timepoint), ref = "baseline")
+ruv_pheno$disease_state <- relevel(factor(ruv_pheno$disease_state), ref = "control")
+ruv_pheno$case_followup <- as.integer(ruv_pheno$disease_state == "T2D case" & ruv_pheno$timepoint == "follow-up")
+ruv_y <- normLibSizes(y_filtered, method = "TMM")
+ruv_tmm_logcpm <- cpm(ruv_y, log = TRUE, normalized.lib.sizes = TRUE)
+stopifnot(identical(colnames(ruv_tmm_logcpm), rownames(ruv_pheno)))
+dim(ruv_tmm_logcpm)
+```
+
+## First-pass edgeR Analysis
+
+RUVg needs negative-control genes that are not affected by the effects of interest. To choose them empirically, a first-pass edgeR quasi-likelihood model was fitted to the baseline samples only, with TMM factors recalculated for this subset. Genes were ranked by their association with disease state, before any RUV correction.
+
+```{r empirical-control-ranking}
+# The primary DGE comparison is between future T2D cases and controls at baseline. We use the same comparison here to rank genes for empirical control selection
+baseline_idx <- ruv_pheno$timepoint == "baseline"
+baseline_pheno <- droplevels(ruv_pheno[baseline_idx, , drop = FALSE])
+baseline_y <- ruv_y[, baseline_idx, keep.lib.sizes = TRUE]
+baseline_y <- normLibSizes(baseline_y, method = "TMM")
+stopifnot(ncol(baseline_y) == 58, identical(colnames(baseline_y$counts), rownames(baseline_pheno)))
+control_design <- model.matrix(~ disease_state, data = baseline_pheno)
+control_fit <- glmQLFit(baseline_y, design = control_design, legacy = FALSE)
+control_test <- glmQLFTest(control_fit, coef = 2)
+control_ranking <- topTags(control_test, n = Inf, sort.by = "PValue")$table |>
+  as.data.frame() |>
+  rownames_to_column("gene_id")
+```
+
+## Empirical Control Genes
+
+Two empirical control sets were defined from this ranking, as in the primary QC:
+
+- **Exclude top 5000**: all genes except the 5,000 most significant
+- **Bottom 50%**: the least significant half of the ranked genes
+
+```{r empirical-controls}
+top5000_genes <- control_ranking |>
+  slice_head(n = min(5000, nrow(control_ranking))) |>
+  pull(gene_id)
+empirical_controls_exclude5000 <- setdiff(rownames(ruv_y$counts), top5000_genes)
+empirical_controls_bottom50 <- control_ranking |>
+  slice_tail(n = floor(nrow(control_ranking) * 0.5)) |>
+  pull(gene_id)
+control_sets <- list(exclude_top5000 = empirical_controls_exclude5000, bottom50 = empirical_controls_bottom50)
+control_labels <- c(exclude_top5000 = "Exclude top 5000", bottom50 = "Bottom 50%")
+tibble(`Control strategy` = unname(control_labels[names(control_sets)]),
+  `Genes ranked` = nrow(control_ranking),
+  `Control genes` = lengths(control_sets)) |>
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE, highlight = TRUE)
+```
+
+## RUVg Across k = 1 to 10
+
+RUVg was run on the TMM-normalised logCPM (`isLog = TRUE`, `round = FALSE`) with each control set and `k = 1-10`, where `k` is the number of unwanted factors estimated. The range of `k` was re-examined because the gene filter differs from the primary QC.
+
+```{r ruvg-fits}
+ruv_k_values <- 1:10
+ruv_fits <- purrr::map(control_sets, function(controls) {
+  purrr::map(ruv_k_values, function(k) RUVg(ruv_tmm_logcpm, controls, k = k, isLog = TRUE, round = FALSE)) |>
+    setNames(paste0("k", ruv_k_values))})
+```
+
+## PCA Across Empirical Control Strategies
+
+PCA (centred, not scaled) was run on the RUVg-normalised logCPM for each control set and value of `k`. Points and ellipses are coloured by disease state, with point shape and line type showing timepoint. Ellipses are drawn at the 95% level for each combination of disease state and timepoint.
+
+```{r ruvg-pca-data}
+ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
+  purrr::map_dfr(ruv_k_values, function(k) {
+    pca_k <- prcomp(t(control_fits[[paste0("k", k)]]$normalizedCounts), center = TRUE, scale. = FALSE)
+    variance_k <- (pca_k$sdev^2 / sum(pca_k$sdev^2)) * 100
+    as.data.frame(pca_k$x[, 1:2, drop = FALSE]) |>
+      rownames_to_column("run") |>
+      mutate(control_id = control_id, control_method = unname(control_labels[control_id]), k = k,
+        pc1_variance = variance_k[1], pc2_variance = variance_k[2])
+  })}) |>
+  left_join(sample_info, by = "run") |>
+  mutate(disease_state = factor(disease_state, levels = c("control", "T2D case")),
+    timepoint = factor(timepoint, levels = c("baseline", "follow-up")))
+```
+
+```{r ruvg-pca-function}
+ruv_pc1_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC1))
+ruv_pc2_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC2))
+plot_ruv_pca_tabs <- function(control_id_selected) {
+  for (k_value in ruv_k_values) {
+    ruv_pca_k <- ruv_pca_data |>
+      dplyr::filter(control_id == control_id_selected, k == k_value)
+    cat("\n\n#### k = ", k_value, "\n\n", sep = "")
+    p <- ggplot(ruv_pca_k, aes(x = PC1, y = PC2, color = disease_state, shape = timepoint)) +
+      stat_ellipse(aes(group = interaction(disease_state, timepoint), color = disease_state, linetype = timepoint),
+        level = 0.95, linewidth = 0.8) +
+      geom_point(size = 2.8, alpha = 0.85) +
+      scale_color_manual(values = disease_colors) +
+      scale_shape_manual(values = timepoint_shapes) +
+      scale_linetype_manual(values = c("baseline" = "solid", "follow-up" = "dashed")) +
+      labs(x = paste0("PC1 (", round(ruv_pca_k$pc1_variance[1], 1), "%)"),
+        y = paste0("PC2 (", round(ruv_pca_k$pc2_variance[1], 1), "%)"),
+        color = "Disease state", shape = "Timepoint", linetype = "Timepoint") +
+      coord_cartesian(xlim = ruv_pc1_lim, ylim = ruv_pc2_lim) +
+      cchc_theme()
+    print(p)}}
+```
+
+### Exclude Top 5000 {.tabset}
+
+```{r ruvg-pca-exclude-top5000, results = "asis", fig.width = 9, fig.height = 7}
+plot_ruv_pca_tabs("exclude_top5000")
+```
+
+### Bottom 50% {.tabset}
+
+```{r ruvg-pca-bottom50, results = "asis", fig.width = 9, fig.height = 7}
+plot_ruv_pca_tabs("bottom50")
+```
