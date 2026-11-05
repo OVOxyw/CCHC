@@ -18,6 +18,8 @@ library(tidyverse)
 library(reactable)
 library(edgeR)
 library(RUVSeq)
+library(msigdbr)
+library(fgsea)
 stopifnot(packageVersion("edgeR") >= package_version("4.0.0"))
 disease_colors <- c("control" = "#0072B2", "T2D case" = "#D55E00")
 timepoint_colors <- c("baseline" = "#009E73", "follow-up" = "#CC79A7")
@@ -407,6 +409,167 @@ ggplot(dge_plot_data, aes(x = logCPM, y = logFC, color = significance)) +
   geom_point(alpha = 0.65, size = 1.5) +
   scale_color_manual(values = c("FDR >= 0.05" = "grey65", "FDR < 0.05" = "#D55E00")) +
   labs(x = "Average log2 CPM", y = "log2 fold change (future T2D cases / controls)", color = NULL)
+```
+
+# Gene Set Enrichment Analysis
+
+Gene set enrichment analysis (GSEA) used all genes tested in the baseline edgeR model, with the two RUV factors as covariates. Genes were ranked by sign(logFC) × -log10(p-value), so genes higher in future T2D cases sit at the top of the list and genes lower in cases at the bottom.
+
+## Ranked Gene List
+
+```{r gsea-ranking}
+gsea_rank_data <- dge_results |>
+  transmute(gene_id, ensembl_gene = str_extract(gene_id, "^ENSG[0-9]+"), logFC, PValue, FDR)
+## Version suffixes are dropped so IDs match the MSigDB Ensembl IDs
+stopifnot(!anyNA(gsea_rank_data$ensembl_gene), !anyDuplicated(gsea_rank_data$ensembl_gene),
+  all(is.finite(gsea_rank_data$logFC)), all(is.finite(gsea_rank_data$PValue)),
+  all(gsea_rank_data$PValue >= 0 & gsea_rank_data$PValue <= 1))
+gsea_rank_data <- gsea_rank_data |>
+  mutate(rank_score = sign(logFC) * -log10(pmax(PValue, .Machine$double.xmin))) |>
+  arrange(desc(rank_score), ensembl_gene)
+gsea_ranks <- setNames(gsea_rank_data$rank_score, gsea_rank_data$ensembl_gene)
+tibble(Metric = c("Genes in DGE results", "Genes in GSEA ranking", "Positive scores", "Negative scores", "Zero scores",
+    "Repeated scores after the first occurrence"),
+  Value = c(nrow(dge_results), length(gsea_ranks), sum(gsea_ranks > 0), sum(gsea_ranks < 0), sum(gsea_ranks == 0),
+    sum(duplicated(gsea_ranks)))) |>
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
+```
+
+## KEGG Gene Sets
+
+Human KEGG Legacy pathways (MSigDB C2, CP:KEGG_LEGACY) were obtained with msigdbr and saved locally so later renders use the same gene sets. Pathways were kept if 15-500 of their genes were in the ranked list and more than 5% of their annotated genes were detected.
+
+```{r gsea-gene-sets}
+gsea_cache_file <- "../data/gene_sets/msigdb_hs_kegg_legacy.rds"
+if (file.exists(gsea_cache_file)) {
+  kegg_tbl <- readRDS(gsea_cache_file)} else {
+  kegg_tbl <- msigdbr::msigdbr(db_species = "HS", species = "Homo sapiens", collection = "C2",
+    subcollection = "CP:KEGG_LEGACY")
+  dir.create(dirname(gsea_cache_file), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(kegg_tbl, gsea_cache_file)}
+stopifnot(nrow(kegg_tbl) > 0, all(kegg_tbl$gs_collection == "C2"), all(kegg_tbl$gs_subcollection == "CP:KEGG_LEGACY"))
+kegg_members <- kegg_tbl |>
+  transmute(gs_name, ensembl_gene = str_extract(ensembl_gene, "^ENSG[0-9]+")) |>
+  dplyr::filter(!is.na(ensembl_gene)) |>
+  distinct(gs_name, ensembl_gene)
+kegg_coverage <- kegg_members |>
+  mutate(detected = ensembl_gene %in% names(gsea_ranks)) |>
+  group_by(gs_name) |>
+  summarise(Annotated_genes = n(), Detected_genes = sum(detected), .groups = "drop") |>
+  mutate(Coverage = Detected_genes / Annotated_genes,
+    Eligible = Coverage > 0.05 & Detected_genes >= 15 & Detected_genes <= 500)
+reactable(kegg_coverage, searchable = TRUE, defaultPageSize = 10,
+  columns = list(Coverage = colDef(format = colFormat(percent = TRUE, digits = 1))),
+  bordered = TRUE, striped = TRUE)
+kegg_detected <- kegg_members |>
+  dplyr::filter(gs_name %in% kegg_coverage$gs_name[kegg_coverage$Eligible], ensembl_gene %in% names(gsea_ranks))
+kegg_by_gs <- split(kegg_detected$ensembl_gene, kegg_detected$gs_name)
+stopifnot(length(kegg_by_gs) > 0)
+tibble(Metric = c("MSigDB version", "Genes in ranking", "Ranked genes represented in KEGG",
+    "KEGG pathways before filtering", "Eligible KEGG pathways"),
+  Value = c(paste(unique(kegg_tbl$db_version), collapse = "; "),
+    as.character(length(gsea_ranks)),
+    as.character(sum(names(gsea_ranks) %in% kegg_members$ensembl_gene)),
+    as.character(nrow(kegg_coverage)),
+    as.character(length(kegg_by_gs)))) |>
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
+```
+
+## Pathway Enrichment
+
+Enrichment was tested with fgsea's adaptive multilevel method (`fgseaMultilevel()`, `eps = 0`) and a fixed random seed. Pathways with a Benjamini-Hochberg adjusted p-value below 0.05 were considered significant.
+
+```{r gsea-test}
+## fgseaMultilevel() uses random sampling, so the seed keeps p-values reproducible
+set.seed(101)
+gsea_results <- fgsea::fgseaMultilevel(pathways = kegg_by_gs, stats = gsea_ranks, minSize = 15, maxSize = 500,
+  scoreType = "std", gseaParam = 1, eps = 0, BPPARAM = BiocParallel::SerialParam()) |>
+  as_tibble() |>
+  arrange(padj, pval, pathway)
+tibble(Result = c("Pathways tested", "Unavailable adjusted p-values", "FDR < 0.05", "Positive NES at FDR < 0.05",
+    "Negative NES at FDR < 0.05"),
+  Pathways = c(nrow(gsea_results),
+    sum(is.na(gsea_results$padj)),
+    sum(gsea_results$padj < 0.05, na.rm = TRUE),
+    sum(gsea_results$padj < 0.05 & gsea_results$NES > 0, na.rm = TRUE),
+    sum(gsea_results$padj < 0.05 & gsea_results$NES < 0, na.rm = TRUE))) |>
+  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
+```
+
+## Pathway Results
+
+A positive normalised enrichment score (NES) means the pathway's genes sit towards those with higher baseline expression in future T2D cases; a negative NES means they sit towards genes with lower expression.
+
+```{r gsea-results}
+gsea_result_table <- gsea_results |>
+  mutate(leadingEdge = vapply(leadingEdge, paste, character(1), collapse = "; "))
+reactable(gsea_result_table, searchable = TRUE, defaultPageSize = 10,
+  columns = list(
+    pathway = colDef(minWidth = 260),
+    NES = colDef(format = colFormat(digits = 3)),
+    pval = colDef(cell = function(value) formatC(value, format = "e", digits = 2)),
+    padj = colDef(cell = function(value) formatC(value, format = "e", digits = 2)),
+    leadingEdge = colDef(minWidth = 250)),
+  bordered = TRUE, striped = TRUE, highlight = TRUE)
+```
+
+## Enrichment Overview
+
+NES for the 20 pathways with the smallest adjusted p-values. Grey bars are pathways that did not reach FDR < 0.05.
+
+```{r gsea-overview, fig.height = 8}
+gsea_top <- gsea_results |>
+  dplyr::filter(is.finite(NES), !is.na(padj)) |>
+  slice_head(n = 20) |>
+  mutate(Direction = case_when(padj >= 0.05 ~ "FDR >= 0.05",
+      NES > 0 ~ "Higher in future T2D cases",
+      TRUE ~ "Lower in future T2D cases"),
+    Pathway_label = pathway |> str_remove("^KEGG_") |> str_replace_all("_", " "))
+if (nrow(gsea_top) > 0) {
+  print(ggplot(gsea_top, aes(x = NES, y = reorder(Pathway_label, NES), fill = Direction)) +
+    geom_col() +
+    geom_vline(xintercept = 0, color = "grey40") +
+    scale_fill_manual(values = c("FDR >= 0.05" = "grey70", "Higher in future T2D cases" = "#D55E00",
+      "Lower in future T2D cases" = "#0072B2")) +
+    labs(x = "Normalised enrichment score", y = NULL, fill = NULL))} else {
+  cat("No pathways have an available NES and adjusted p-value.")}
+```
+
+## Enrichment Curves
+
+Running enrichment score for the most significant pathway in each direction, where one reached FDR < 0.05.
+
+```{r gsea-curves, fig.height = 5}
+gsea_curve_paths <- gsea_results |>
+  dplyr::filter(!is.na(padj), padj < 0.05, is.finite(NES), NES != 0) |>
+  mutate(Direction = if_else(NES > 0, "Positive NES", "Negative NES")) |>
+  group_by(Direction) |>
+  slice_min(order_by = padj, n = 1, with_ties = FALSE) |>
+  ungroup()
+if (nrow(gsea_curve_paths) == 0) {
+  cat("No pathways met FDR < 0.05.")} else {
+  for (pathway_name in gsea_curve_paths$pathway) {
+    print(fgsea::plotEnrichment(kegg_by_gs[[pathway_name]], gsea_ranks) +
+      labs(title = pathway_name, subtitle = "Positive rank: higher baseline expression in future T2D cases"))}}
+```
+
+## Exported Results
+
+The ranked gene list, pathway coverage and fgsea results were written to `output/dge/gsea`, together with an RDS file holding the inputs, parameters and session information.
+
+```{r gsea-export}
+gsea_output_dir <- "../output/dge/gsea"
+dir.create(gsea_output_dir, recursive = TRUE, showWarnings = FALSE)
+write_tsv(gsea_rank_data, file.path(gsea_output_dir, "ranked_genes.tsv"))
+write_tsv(kegg_coverage, file.path(gsea_output_dir, "pathway_coverage.tsv"))
+write_tsv(gsea_result_table, file.path(gsea_output_dir, "fgsea_results.tsv"))
+saveRDS(list(results = gsea_results, ranks = gsea_ranks, pathways = kegg_by_gs, coverage = kegg_coverage,
+    msigdb_version = unique(kegg_tbl$db_version),
+    parameters = list(ranking = "sign(logFC) * -log10(PValue)", minSize = 15, maxSize = 500, minimum_coverage = 0.05,
+      seed = 101, eps = 0, scoreType = "std", gseaParam = 1),
+    model = list(control = selected_control, k = selected_k, robust = FALSE),
+    session_info = sessionInfo()),
+  file.path(gsea_output_dir, "fgsea_analysis.rds"))
 ```
 
 # Session Information
