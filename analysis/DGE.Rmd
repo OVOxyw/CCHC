@@ -67,7 +67,7 @@ stopifnot(identical(colnames(gene_counts), sample_info$run),
 
 # Gene Expression Filtering
 
-DGE used the length-scaled gene counts from tximport (`countsFromAbundance = "lengthScaledTPM"`). Lowly expressed genes were removed with edgeR's `filterByExpr()`, keeping genes with a CPM of about 1 in at least as many samples as the smallest disease state by timepoint group. These genes carry little information for testing and add to the multiple-testing burden.
+Gene-level counts were taken from the length-scaled tximport object (`countsFromAbundance = "lengthScaledTPM"`). Lowly expressed genes were removed with edgeR's `filterByExpr()`, keeping genes with a CPM of about 1 in at least as many samples as the smallest disease state by timepoint group. Low-expression genes carry little information for testing and add to the multiple-testing burden.
 
 ```{r cpm-filtering}
 ## The four groups are defined by disease state and timepoint;
@@ -109,6 +109,8 @@ p
 
 # Unwanted Variation Assessment
 
+RUVg was used to estimate latent unwanted factors to include as covariates in the DGE model. RUVg was re-run here, rather than taken from the primary QC, because the DGE gene filter differs.
+
 ## RUV Setup
 
 TMM (trimmed mean of M-values) normalisation factors were calculated for the filtered genes, and logCPM was recalculated from the TMM-adjusted library sizes as input to RUVg. Baseline and control were set as the reference levels for timepoint and disease state.
@@ -127,7 +129,7 @@ stopifnot(identical(colnames(ruv_tmm_logcpm), rownames(ruv_pheno)))
 
 ## First-pass edgeR Analysis
 
-RUVg needs negative-control genes that are not affected by the effect of interest. To choose them empirically, a first-pass edgeR quasi-likelihood model was fitted to the baseline samples only, with TMM factors recalculated for this subset. Genes were ranked by their association with disease state, before any RUV correction. Less significant genes were used as empirical controls; their lack of association with future T2D was an assumption, not independently established. Controls selected at baseline were used to estimate RUV factors across both timepoints.
+RUVg needs negative-control genes that are not affected by the effect of interest. To choose them empirically, a first-pass edgeR quasi-likelihood model was fitted to the baseline samples only, with TMM factors recalculated for this subset. Genes were ranked by their association with disease state, before any RUV correction. The less significant genes were assumed not to be associated with future T2D and used as controls; this assumption was not tested directly. Controls chosen at baseline were then used to estimate RUV factors across both timepoints.
 
 ```{r empirical-control-ranking}
 ## Genes are ranked by the baseline case-control comparison;
@@ -170,10 +172,11 @@ tibble(`Control strategy` = unname(control_labels[names(control_sets)]),
 
 ## RUVg Across k = 1 to 10
 
-RUVg was run on the TMM-normalised logCPM (`isLog = TRUE`, `round = FALSE`) with each control set and `k = 1-10`, where `k` is the number of unwanted factors estimated. The range of `k` was re-examined because the gene filter differs from the primary QC.
+RUVg was run on the TMM-normalised logCPM (`isLog = TRUE`, `round = FALSE`) with each control set and `k = 1-10`, where `k` is the number of unwanted factors estimated.
 
 ```{r ruvg-fits}
 ruv_k_values <- 1:10
+## With isLog = TRUE, normalizedCounts stay on the logCPM scale and go straight into PCA
 ruv_fits <- purrr::map(control_sets, function(controls) {
   purrr::map(ruv_k_values, function(k) RUVg(ruv_tmm_logcpm, controls, k = k, isLog = TRUE, round = FALSE)) |>
     setNames(paste0("k", ruv_k_values))})
@@ -199,6 +202,7 @@ ruv_pca_data <- purrr::imap_dfr(ruv_fits, function(control_fits, control_id) {
 ```
 
 ```{r ruvg-pca-function}
+## Use common axis limits across all k values and control sets
 ruv_pc1_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC1))
 ruv_pc2_lim <- c(-1, 1) * max(abs(ruv_pca_data$PC2))
 plot_ruv_pca_tabs <- function(control_id_selected) {
@@ -260,7 +264,7 @@ stopifnot(identical(colnames(baseline_y$counts), rownames(dge_pheno)),
   all(is.finite(baseline_W)),
   all(dge_pheno$timepoint == "baseline"))
 dge_pheno |>
-  dplyr::count(disease_state, name = "n") |>
+  dplyr::count(disease_state, name = "Samples") |>
   reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
 ```
 
@@ -347,7 +351,7 @@ tibble(Result = c("Shared", "Standard only", "Robust only"),
 
 ## Quasi-likelihood Dispersion
 
-QL dispersion diagnostics for the standard and robust fits, using edgeR's plotting method.
+Quasi-likelihood (QL) dispersion estimates against average logCPM for the standard and robust fits, plotted with `plotQLDisp()`.
 
 ```{r baseline-ql-dispersion, fig.width = 10, fig.height = 5}
 ## local() with on.exit() puts the plotting layout back after the two panels
@@ -360,7 +364,7 @@ local({
 
 ## Gene-level Results
 
-Positive logFC means higher baseline expression in future T2D cases than in controls.
+All tested genes, sorted by p-value. Positive logFC means higher baseline expression in future T2D cases than in controls.
 
 ```{r baseline-dge-results}
 reactable(dge_results,
@@ -386,7 +390,7 @@ ggplot(dge_results, aes(x = PValue)) +
 
 ## Volcano Plot
 
-Genes with FDR < 0.05 are highlighted.
+-log10 p-value against logFC, with genes at FDR < 0.05 highlighted.
 
 ```{r baseline-dge-volcano}
 dge_plot_data <- dge_results |>
@@ -409,167 +413,6 @@ ggplot(dge_plot_data, aes(x = logCPM, y = logFC, color = significance)) +
   geom_point(alpha = 0.65, size = 1.5) +
   scale_color_manual(values = c("FDR >= 0.05" = "grey65", "FDR < 0.05" = "#D55E00")) +
   labs(x = "Average log2 CPM", y = "log2 fold change (future T2D cases / controls)", color = NULL)
-```
-
-# Gene Set Enrichment Analysis
-
-Gene set enrichment analysis (GSEA) used all genes tested in the baseline edgeR model, with the two RUV factors as covariates. Genes were ranked by sign(logFC) × -log10(p-value), so genes higher in future T2D cases sit at the top of the list and genes lower in cases at the bottom.
-
-## Ranked Gene List
-
-```{r gsea-ranking}
-gsea_rank_data <- dge_results |>
-  transmute(gene_id, ensembl_gene = str_extract(gene_id, "^ENSG[0-9]+"), logFC, PValue, FDR)
-## Version suffixes are dropped so IDs match the MSigDB Ensembl IDs
-stopifnot(!anyNA(gsea_rank_data$ensembl_gene), !anyDuplicated(gsea_rank_data$ensembl_gene),
-  all(is.finite(gsea_rank_data$logFC)), all(is.finite(gsea_rank_data$PValue)),
-  all(gsea_rank_data$PValue >= 0 & gsea_rank_data$PValue <= 1))
-gsea_rank_data <- gsea_rank_data |>
-  mutate(rank_score = sign(logFC) * -log10(pmax(PValue, .Machine$double.xmin))) |>
-  arrange(desc(rank_score), ensembl_gene)
-gsea_ranks <- setNames(gsea_rank_data$rank_score, gsea_rank_data$ensembl_gene)
-tibble(Metric = c("Genes in DGE results", "Genes in GSEA ranking", "Positive scores", "Negative scores", "Zero scores",
-    "Repeated scores after the first occurrence"),
-  Value = c(nrow(dge_results), length(gsea_ranks), sum(gsea_ranks > 0), sum(gsea_ranks < 0), sum(gsea_ranks == 0),
-    sum(duplicated(gsea_ranks)))) |>
-  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
-```
-
-## KEGG Gene Sets
-
-Human KEGG Legacy pathways (MSigDB C2, CP:KEGG_LEGACY) were obtained with msigdbr and saved locally so later renders use the same gene sets. Pathways were kept if 15-500 of their genes were in the ranked list and more than 5% of their annotated genes were detected.
-
-```{r gsea-gene-sets}
-gsea_cache_file <- "../data/gene_sets/msigdb_hs_kegg_legacy.rds"
-if (file.exists(gsea_cache_file)) {
-  kegg_tbl <- readRDS(gsea_cache_file)} else {
-  kegg_tbl <- msigdbr::msigdbr(db_species = "HS", species = "Homo sapiens", collection = "C2",
-    subcollection = "CP:KEGG_LEGACY")
-  dir.create(dirname(gsea_cache_file), recursive = TRUE, showWarnings = FALSE)
-  saveRDS(kegg_tbl, gsea_cache_file)}
-stopifnot(nrow(kegg_tbl) > 0, all(kegg_tbl$gs_collection == "C2"), all(kegg_tbl$gs_subcollection == "CP:KEGG_LEGACY"))
-kegg_members <- kegg_tbl |>
-  transmute(gs_name, ensembl_gene = str_extract(ensembl_gene, "^ENSG[0-9]+")) |>
-  dplyr::filter(!is.na(ensembl_gene)) |>
-  distinct(gs_name, ensembl_gene)
-kegg_coverage <- kegg_members |>
-  mutate(detected = ensembl_gene %in% names(gsea_ranks)) |>
-  group_by(gs_name) |>
-  summarise(Annotated_genes = n(), Detected_genes = sum(detected), .groups = "drop") |>
-  mutate(Coverage = Detected_genes / Annotated_genes,
-    Eligible = Coverage > 0.05 & Detected_genes >= 15 & Detected_genes <= 500)
-reactable(kegg_coverage, searchable = TRUE, defaultPageSize = 10,
-  columns = list(Coverage = colDef(format = colFormat(percent = TRUE, digits = 1))),
-  bordered = TRUE, striped = TRUE)
-kegg_detected <- kegg_members |>
-  dplyr::filter(gs_name %in% kegg_coverage$gs_name[kegg_coverage$Eligible], ensembl_gene %in% names(gsea_ranks))
-kegg_by_gs <- split(kegg_detected$ensembl_gene, kegg_detected$gs_name)
-stopifnot(length(kegg_by_gs) > 0)
-tibble(Metric = c("MSigDB version", "Genes in ranking", "Ranked genes represented in KEGG",
-    "KEGG pathways before filtering", "Eligible KEGG pathways"),
-  Value = c(paste(unique(kegg_tbl$db_version), collapse = "; "),
-    as.character(length(gsea_ranks)),
-    as.character(sum(names(gsea_ranks) %in% kegg_members$ensembl_gene)),
-    as.character(nrow(kegg_coverage)),
-    as.character(length(kegg_by_gs)))) |>
-  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
-```
-
-## Pathway Enrichment
-
-Enrichment was tested with fgsea's adaptive multilevel method (`fgseaMultilevel()`, `eps = 0`) and a fixed random seed. Pathways with a Benjamini-Hochberg adjusted p-value below 0.05 were considered significant.
-
-```{r gsea-test}
-## fgseaMultilevel() uses random sampling, so the seed keeps p-values reproducible
-set.seed(101)
-gsea_results <- fgsea::fgseaMultilevel(pathways = kegg_by_gs, stats = gsea_ranks, minSize = 15, maxSize = 500,
-  scoreType = "std", gseaParam = 1, eps = 0, BPPARAM = BiocParallel::SerialParam()) |>
-  as_tibble() |>
-  arrange(padj, pval, pathway)
-tibble(Result = c("Pathways tested", "Unavailable adjusted p-values", "FDR < 0.05", "Positive NES at FDR < 0.05",
-    "Negative NES at FDR < 0.05"),
-  Pathways = c(nrow(gsea_results),
-    sum(is.na(gsea_results$padj)),
-    sum(gsea_results$padj < 0.05, na.rm = TRUE),
-    sum(gsea_results$padj < 0.05 & gsea_results$NES > 0, na.rm = TRUE),
-    sum(gsea_results$padj < 0.05 & gsea_results$NES < 0, na.rm = TRUE))) |>
-  reactable(pagination = FALSE, bordered = TRUE, striped = TRUE)
-```
-
-## Pathway Results
-
-A positive normalised enrichment score (NES) means the pathway's genes sit towards those with higher baseline expression in future T2D cases; a negative NES means they sit towards genes with lower expression.
-
-```{r gsea-results}
-gsea_result_table <- gsea_results |>
-  mutate(leadingEdge = vapply(leadingEdge, paste, character(1), collapse = "; "))
-reactable(gsea_result_table, searchable = TRUE, defaultPageSize = 10,
-  columns = list(
-    pathway = colDef(minWidth = 260),
-    NES = colDef(format = colFormat(digits = 3)),
-    pval = colDef(cell = function(value) formatC(value, format = "e", digits = 2)),
-    padj = colDef(cell = function(value) formatC(value, format = "e", digits = 2)),
-    leadingEdge = colDef(minWidth = 250)),
-  bordered = TRUE, striped = TRUE, highlight = TRUE)
-```
-
-## Enrichment Overview
-
-NES for the 20 pathways with the smallest adjusted p-values. Grey bars are pathways that did not reach FDR < 0.05.
-
-```{r gsea-overview, fig.height = 8}
-gsea_top <- gsea_results |>
-  dplyr::filter(is.finite(NES), !is.na(padj)) |>
-  slice_head(n = 20) |>
-  mutate(Direction = case_when(padj >= 0.05 ~ "FDR >= 0.05",
-      NES > 0 ~ "Higher in future T2D cases",
-      TRUE ~ "Lower in future T2D cases"),
-    Pathway_label = pathway |> str_remove("^KEGG_") |> str_replace_all("_", " "))
-if (nrow(gsea_top) > 0) {
-  print(ggplot(gsea_top, aes(x = NES, y = reorder(Pathway_label, NES), fill = Direction)) +
-    geom_col() +
-    geom_vline(xintercept = 0, color = "grey40") +
-    scale_fill_manual(values = c("FDR >= 0.05" = "grey70", "Higher in future T2D cases" = "#D55E00",
-      "Lower in future T2D cases" = "#0072B2")) +
-    labs(x = "Normalised enrichment score", y = NULL, fill = NULL))} else {
-  cat("No pathways have an available NES and adjusted p-value.")}
-```
-
-## Enrichment Curves
-
-Running enrichment score for the most significant pathway in each direction, where one reached FDR < 0.05.
-
-```{r gsea-curves, fig.height = 5}
-gsea_curve_paths <- gsea_results |>
-  dplyr::filter(!is.na(padj), padj < 0.05, is.finite(NES), NES != 0) |>
-  mutate(Direction = if_else(NES > 0, "Positive NES", "Negative NES")) |>
-  group_by(Direction) |>
-  slice_min(order_by = padj, n = 1, with_ties = FALSE) |>
-  ungroup()
-if (nrow(gsea_curve_paths) == 0) {
-  cat("No pathways met FDR < 0.05.")} else {
-  for (pathway_name in gsea_curve_paths$pathway) {
-    print(fgsea::plotEnrichment(kegg_by_gs[[pathway_name]], gsea_ranks) +
-      labs(title = pathway_name, subtitle = "Positive rank: higher baseline expression in future T2D cases"))}}
-```
-
-## Exported Results
-
-The ranked gene list, pathway coverage and fgsea results were written to `output/dge/gsea`, together with an RDS file holding the inputs, parameters and session information.
-
-```{r gsea-export}
-gsea_output_dir <- "../output/dge/gsea"
-dir.create(gsea_output_dir, recursive = TRUE, showWarnings = FALSE)
-write_tsv(gsea_rank_data, file.path(gsea_output_dir, "ranked_genes.tsv"))
-write_tsv(kegg_coverage, file.path(gsea_output_dir, "pathway_coverage.tsv"))
-write_tsv(gsea_result_table, file.path(gsea_output_dir, "fgsea_results.tsv"))
-saveRDS(list(results = gsea_results, ranks = gsea_ranks, pathways = kegg_by_gs, coverage = kegg_coverage,
-    msigdb_version = unique(kegg_tbl$db_version),
-    parameters = list(ranking = "sign(logFC) * -log10(PValue)", minSize = 15, maxSize = 500, minimum_coverage = 0.05,
-      seed = 101, eps = 0, scoreType = "std", gseaParam = 1),
-    model = list(control = selected_control, k = selected_k, robust = FALSE),
-    session_info = sessionInfo()),
-  file.path(gsea_output_dir, "fgsea_analysis.rds"))
 ```
 
 # Session Information
